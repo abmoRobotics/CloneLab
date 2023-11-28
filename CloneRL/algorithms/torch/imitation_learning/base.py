@@ -5,6 +5,8 @@ import gymnasium as gym
 import torch
 import numpy as np
 
+import wandb
+import os
 class BaseAgent:
     def __init__(
             self,
@@ -24,6 +26,15 @@ class BaseAgent:
         wandb.init()
 
     def train(self):
+        raise NotImplementedError
+    
+    def save_model(self, name):
+        path = f"runs/CloneRL/{wandb.run.project}/{wandb.run.id}/checkpoints/"
+        if not os.path.exists(path):
+            os.makedirs(path)
+        torch.save(self.policy.state_dict(), path + name)
+    
+    def validate(self):
         raise NotImplementedError
 
     # def test(self):

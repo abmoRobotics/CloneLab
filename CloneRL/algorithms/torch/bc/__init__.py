@@ -1,1 +1,0 @@
-from CloneRL.algorithms.torch.bc.bc import BehaviourCloning, BC_DEFAULT_CONFIG

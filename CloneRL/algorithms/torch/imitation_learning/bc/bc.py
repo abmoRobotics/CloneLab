@@ -1,6 +1,6 @@
 from typing import Dict
 
-from CloneRL.algorithms.base import BaseAgent
+from CloneRL.algorithms.torch.imitation_learning.base import BaseAgent
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -16,7 +16,7 @@ class BehaviourCloning(BaseAgent):
         super().__init__(cfg, policy, device=device)
         self.policy = policy
         self.loss_fn = nn.MSELoss(reduction="mean")
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
+        self.optimizer = optim.Adam(self.policy.parameters(), lr=1e-3)
         self.scaler = torch.cuda.amp.GradScaler()
     
         self.initialize()
@@ -24,11 +24,12 @@ class BehaviourCloning(BaseAgent):
     def train(self, data: Dict[str, torch.Tensor]):
         
         def compute_loss(target, actions) -> torch.Tensor:
-            return self.loss_fn(actions, target)
+            #print(f'target dtype: {target.dtype}, actions dtype: {actions.dtype}')
+            return self.loss_fn(actions, target.float())
 
         
         #observations = data['observation']
-        target = data['action'].to(self.device)
+        target = data['actions'].to(self.device)
         
         actions = self.policy(data)
 
@@ -43,6 +44,19 @@ class BehaviourCloning(BaseAgent):
         return loss.item()
         # print(loss.item())
 
+    def validate(self, data_val: Dict[str, torch.Tensor]):
+        average_loss = 0
+        with torch.no_grad():
+            for data in data_val:
+
+                target = data['actions'].to(self.device)
+                
+                actions = self.policy(data)
+
+                loss = self.loss_fn(actions, target.float())
+                average_loss += loss.item()
+            print(len(data_val))
+            return average_loss / len(data_val)
 
 
 
