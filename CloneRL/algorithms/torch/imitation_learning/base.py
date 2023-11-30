@@ -19,29 +19,25 @@ class BaseAgent:
         self.cfg = cfg
 
     def initialize(self):
-        # if self.cfg.get("expertiment", {}).get("wandb", False):
-        #     import wandb
-        #     wandb.init()
         import wandb
-        wandb.init()
+        import time
+        run_name = f"{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+        wandb.init(name=run_name)
 
     def train(self):
         raise NotImplementedError
     
     def save_model(self, name):
-        path = f"runs/CloneRL/{wandb.run.project}/{wandb.run.id}/checkpoints/"
+        path = f"runs/{wandb.run.project}/{wandb.run.id}/checkpoints/"
         if not os.path.exists(path):
             os.makedirs(path)
         torch.save(self.policy.state_dict(), path + name)
     
+    def load_model(self, path):
+        self.policy.load_state_dict(torch.load(path))
+
     def validate(self):
         raise NotImplementedError
-
-    # def test(self):
-    #     raise NotImplementedError
-
-    # def save_model(self):
-    #     raise NotImplementedError
-
-    # def load_model(self):
-    #     raise NotImplementedError
+    
+    def act(self, observation: Dict[str, torch.Tensor], deterministic: bool = False):
+        raise NotImplementedError

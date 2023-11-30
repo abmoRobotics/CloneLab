@@ -15,7 +15,7 @@ class BehaviourCloning(BaseAgent):
     def __init__(self, policy, cfg, device="cuda:0" if torch.cuda.is_available() else "cpu"):
         super().__init__(cfg, policy, device=device)
         self.policy = policy
-        self.loss_fn = nn.MSELoss(reduction="mean")
+        self.loss_fn = nn.MSELoss()
         self.optimizer = optim.Adam(self.policy.parameters(), lr=1e-3)
         self.scaler = torch.cuda.amp.GradScaler()
     
@@ -55,10 +55,15 @@ class BehaviourCloning(BaseAgent):
 
                 loss = self.loss_fn(actions, target.float())
                 average_loss += loss.item()
-            print(len(data_val))
             return average_loss / len(data_val)
 
 
+
+    def evaluate(self, env, num_episodes=1000):
+      pass
+
+    def act(self, observation: Dict[str, torch.Tensor], deterministic: bool = False):
+        pass
 
 
     
