@@ -58,3 +58,20 @@ class SequentialTrainer(BaseTrainer):
 
             wandb.log({"train loss": average_loss, "val loss": val_loss})
 
+    def evaluate(self, env, num_steps=1000):
+        obs, info = env.reset()
+
+        for timestep in tqdm.tqdm(range(num_steps)):
+            with torch.no_grad():
+                actions = self.policy.policy({"observations": torch.Tensor(obs),
+                                              "extras": info})
+                next_obs, rewards, terminated, truncated, info = env.step(actions)
+
+                # if not self.headless:
+                #     env.render()
+
+            with torch.no_grad():
+                if terminated.any() or truncated.any():
+                    obs, info = env.reset()
+                else:
+                    obs = next_obs
