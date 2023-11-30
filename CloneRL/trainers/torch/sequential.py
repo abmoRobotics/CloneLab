@@ -1,16 +1,13 @@
-from typing import List, Tuple, Union, Optional, Dict, Any
-
-import tqdm
 import copy
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-
-from CloneRL.trainers.torch.base import BaseTrainer
-from CloneRL.algorithms.torch.imitation_learning.base import BaseAgent
-
+import tqdm
 from torch.utils.data import DataLoader
 
 import wandb
+from CloneRL.algorithms.torch.imitation_learning.base import BaseAgent
+from CloneRL.trainers.torch.base import BaseTrainer
 
 SEQUENTIAL_TRAINER_DEFAULT_CONFIG = {
     "epochs": 100000,
@@ -35,7 +32,7 @@ class SequentialTrainer(BaseTrainer):
     def train(self, epoch: int):
         best_val_loss = self.policy.validate(self.train_val_ds)
 
-        
+
 
         for epoch in range(epoch):
             total_loss = 0
@@ -44,10 +41,10 @@ class SequentialTrainer(BaseTrainer):
                 total_loss += loss
                 #wandb.log({"train loss": loss})
             average_loss = total_loss / len(self.train_ds)
-            
+
             if epoch % 1 == 0:
                 self.policy.save_model(f"model_{epoch}.pt")
-            
+
 
 
             val_loss = self.policy.validate(self.train_val_ds)

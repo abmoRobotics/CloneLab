@@ -1,14 +1,13 @@
 
 import gymnasium as gym
-
-from CloneRL.algorithms.torch.imitation_learning.base import BaseAgent
-
-from CloneRL.collectors.torch.data_recorder import DataRecorderBase
-
 import torch.nn as nn
 
+from CloneRL.algorithms.torch.imitation_learning.base import BaseAgent
+from CloneRL.collectors.torch.data_recorder import DataRecorderBase
+
+
 class SequentialCollectorBase:
-    def __init__(self, 
+    def __init__(self,
                  env: gym.Env,
                  model: nn.Module,
                  recorder: DataRecorderBase,
@@ -23,4 +22,3 @@ class SequentialCollectorBase:
     def collect(self):
         """ Collects data from the environment using the policy and the predict_fn."""
         raise NotImplementedError("This method should be implemented in a subclass.")
-

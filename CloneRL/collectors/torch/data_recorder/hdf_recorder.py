@@ -1,21 +1,20 @@
 from typing import Any, Dict, Optional
 
+import gymnasium as gym
 import h5py
+import numpy as np
 
 from .base import DataRecorderBase
 
-import gymnasium as gym
-
-import numpy as np
 
 class HDF5DataRecorder(DataRecorderBase):
 
 
     def __init__(self,
-                 base_filename: str, 
+                 base_filename: str,
                  num_envs: int,
                  env: gym.Env,
-                 extras: Optional[Dict[str, Dict[str, Any]]] = None, 
+                 extras: Optional[Dict[str, Dict[str, Any]]] = None,
                  max_rows: int = 500_000) -> None:
         super().__init__(num_envs, extras)
         self.base_filename = base_filename
@@ -40,11 +39,11 @@ class HDF5DataRecorder(DataRecorderBase):
 
             for key, param in self.extras.items():
                 file.create_dataset(
-                    key, 
-                    (self.max_rows, param["shape"]), 
+                    key,
+                    (self.max_rows, param["shape"]),
                     dtype=param["dtype"]
                 )
-            
+
             file.attrs["number_of_steps"] = 0
 
     def write_to_disk(self, rover_id: int) -> None:
@@ -55,7 +54,7 @@ class HDF5DataRecorder(DataRecorderBase):
             self._create_new_file()
             self.current_row = 0
             next_index = len(data_chunk["observations"])
-        
+
         with h5py.File(self.file_name, "a") as file:
             for key, value in data_chunk.items():
                 file[key][self.current_row:next_index] = value

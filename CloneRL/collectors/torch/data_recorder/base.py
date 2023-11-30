@@ -1,5 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
+
 import torch
+
 
 class DataRecorderBase:
     """
@@ -17,7 +19,7 @@ class DataRecorderBase:
         self.num_envs = num_envs
         self.extras = extras or {}
         self.data_buffers = {rover_id: self._init_buffer() for rover_id in range(self.num_envs)}
-        
+
     def _init_buffer(self) -> Dict[str, List]:
         """Initialize the data buffer."""
         buffer = {
@@ -28,7 +30,7 @@ class DataRecorderBase:
         }
         buffer.update({key: [] for key in self.extras.keys()})
         return buffer
-    
+
     def append_to_buffer(self, obs: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, done: torch.Tensor, info: Dict[str, torch.Tensor]) -> None:
         """Append data to the buffer."""
         for rover_id in range(self.num_envs):
@@ -51,4 +53,4 @@ class DataRecorderBase:
 
     def flush(self) -> None:
         """Writes any remaining data in the buffers to disk. Should be implemented by derived classes."""
-        raise NotImplementedError("This method should be implemented by a derived class.")    
+        raise NotImplementedError("This method should be implemented by a derived class.")
