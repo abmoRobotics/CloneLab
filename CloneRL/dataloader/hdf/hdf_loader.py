@@ -34,8 +34,6 @@ class HDF5Dataset(Dataset):
         if self.max_idx is None:
             self.max_idx = len(self.file[self.mapper["observations"]])
 
-
-
     def __len__(self):
         return self.max_idx - self.min_idx
 
@@ -44,7 +42,11 @@ class HDF5Dataset(Dataset):
         data = {}
 
         for key, value in self.mapper.items():
-            data[key] = torch.from_numpy(np.atleast_1d(self.file[value][idx]))
+            if key == "actions":
+                data[key] = torch.from_numpy(np.atleast_1d(self.file[value][idx+1]))
+            else:
+                data[key] = torch.from_numpy(np.atleast_1d(self.file[value][idx]))
+
 
         return data
 

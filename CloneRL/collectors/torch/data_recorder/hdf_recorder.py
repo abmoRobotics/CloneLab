@@ -17,6 +17,10 @@ class HDF5DataRecorder(DataRecorderBase):
                  extras: Optional[Dict[str, Dict[str, Any]]] = None,
                  max_rows: int = 500_000) -> None:
         super().__init__(num_envs, extras)
+
+        # Check that basefile name does not end with .h5 or .hdf5
+        assert not base_filename.endswith(".h5") and not base_filename.endswith(".hdf5"), \
+            "Base filename should not end with .h5 or .hdf5"
         self.base_filename = base_filename
         self.max_rows = max_rows
         self.current_row = 0
@@ -40,7 +44,7 @@ class HDF5DataRecorder(DataRecorderBase):
             for key, param in self.extras.items():
                 file.create_dataset(
                     key,
-                    (self.max_rows, param["shape"]),
+                    (self.max_rows, *param["shape"]),
                     dtype=param["dtype"]
                 )
 
