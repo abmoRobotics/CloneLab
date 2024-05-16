@@ -13,9 +13,9 @@ from CloneRL.algorithms.torch.imitation_learning.bc import \
     BehaviourCloning as BC
 from CloneRL.dataloader.hdf import (HDF_DEFAULT_IL_MAPPER,
                                     HDF_DEFAULT_ORL_MAPPER, HDF5Dataset)
-from CloneRL.dataloader.hdf.hdf_loader2 import (
+from CloneRL.dataloader.hdf.hdf_loader import (
     CloneLabDataset, OfflineReinforcementLearningDataset)
-from CloneRL.trainers.torch.sequential2 import SequentialTrainer as Trainer
+from CloneRL.trainers.torch.sequential import SequentialTrainer as Trainer
 
 # set_seed(12345)
 
