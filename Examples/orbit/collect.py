@@ -9,11 +9,9 @@ from omni.isaac.orbit.app import AppLauncher
 from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
 from skrl.envs.loaders.torch import load_isaac_orbit_env
 from skrl.envs.wrappers.torch import wrap_env
-
 from CloneRL.collectors.torch import SequentialCollectorOrbit
 from CloneRL.collectors.torch.data_recorder import HDF5DataRecorder
 from CloneRL.utils import skrl_get_actions
-
 # import rover_envs.envs.navigation.robots  # noqa F401
 
 
@@ -78,7 +76,6 @@ def main():
 
     # Start collecting data
     collector.collect()
-
 
 if __name__ == "__main__":
     main()

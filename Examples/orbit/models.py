@@ -22,7 +22,6 @@ def get_activation(activation_name):
             f"Activation function {activation_name} not supported.")
     return activation_fns[activation_name]
 
-
 class HeightmapEncoder(nn.Module):
     def __init__(self, in_channels, encoder_features=[80, 60], encoder_activation="leaky_relu"):
         super().__init__()
@@ -36,7 +35,6 @@ class HeightmapEncoder(nn.Module):
         for layer in self.encoder_layers:
             x = layer(x)
         return x
-
 
 class GaussianNeuralNetwork(GaussianMixin, BaseModel):
     """Gaussian neural network model."""
@@ -105,7 +103,6 @@ class GaussianNeuralNetwork(GaussianMixin, BaseModel):
 
         return x, self.log_std_parameter, {}
 
-
 class HeightmapEncoder(nn.Module):
     def __init__(self, in_channels, encoder_features=[80, 60], encoder_activation="leaky_relu"):
         super().__init__()
@@ -119,7 +116,6 @@ class HeightmapEncoder(nn.Module):
         for layer in self.encoder_layers:
             x = layer(x)
         return x
-
 
 class DepthImageEncoder(nn.Module):
     def __init__(self):
@@ -462,7 +458,6 @@ class v_image(nn.Module):
 
         return x
 
-
 class q_image(nn.Module):
     def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proproception_channels=4, encoder_channels=60, image_channels=1):
         super(q_image, self).__init__()
@@ -519,7 +514,7 @@ class MlpPolicy(nn.Module):
         self.sparse_encoder = HeightmapEncoder(self.sparse_channels)
 
         self.mlp = nn.ModuleList()
-
+        
         in_channels = self.proprioception_channels + 120
         # action_space = action_space.shape[0]
         mlp_features = [256, 160, 128]
@@ -546,7 +541,6 @@ class MlpPolicy(nn.Module):
             x = layer(x)
 
         return x
-
 
 class GRUActor(nn.Module):
     def __init__(self, image_channels=4, image_size=[90, 160], proprioception_channels=2, encoder_channels=60, device=None):

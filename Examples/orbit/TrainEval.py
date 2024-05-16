@@ -1,5 +1,6 @@
 from typing import Dict
 
+
 import rover_envs
 import torch
 import torch.nn as nn
@@ -8,7 +9,6 @@ from models import DepthPolicy
 from skrl.envs.loaders.torch import load_isaac_orbit_env
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.utils import set_seed
-
 from CloneRL.algorithms.torch.imitation_learning.bc import \
     BehaviourCloning as BC
 from CloneRL.dataloader.hdf import (HDF_DEFAULT_IL_MAPPER,
@@ -55,7 +55,6 @@ def eval(trainer: Trainer):
     env = load_isaac_orbit_env(task_name="AAURoverEnvCamera-v0")
     env = wrap_env(env, wrapper="isaac-orbit")
     trainer.evaluate(env, num_steps=10000)
-
 
 if __name__ == "__main__":
     trainer = train_bc()
