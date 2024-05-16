@@ -30,7 +30,6 @@ class BaseAgent:
         raise NotImplementedError
 
     def save_model(self, name):
-
         path = f"runs/{wandb.run.project}/{wandb.run.name}/checkpoints/"
         if not os.path.exists(path):
             os.makedirs(path)
