@@ -264,37 +264,3 @@ class CloneLabDataset(HDF5Dataset):
             else:
                 data[key] = torch.stack(data[key]).to(self.device)
         return data["obs"], data["actions"], data["rewards"], data["next_obs"], data["dones"], data["weights"]
-
-
-class OfflineReinforcementLearningDataset(HDF5Dataset):
-    def __getitem__(self, idx):
-        with h5py.File(self.file_path, 'r') as file:
-            idx += self.min_idx
-            obs = self.get_obs_depth_rgb(idx, file)
-            action = torch.from_numpy(np.atleast_1d(file[self.mapper["actions"]][idx])).to(self.device)
-            reward = torch.from_numpy(np.atleast_1d(file[self.mapper["rewards"]][idx])).to(self.device)
-            next_obs = self.get_obs_depth_rgb(idx + 1, file)
-
-        weights = self.get_weights(idx)
-
-        done = torch.zeros_like(reward)
-        return obs, action, reward, next_obs, done, weights
-
-
-class ImitationLearningDataset(HDF5Dataset):
-    def __getitem__(self, idx):
-        idx += self.min_idx
-
-        obs = self.get_obs_depth(idx)
-        target_action = torch.from_numpy(np.atleast_1d(self.file[self.mapper["actions"]][idx]))
-        return obs, target_action
-
-
-if __name__ == "__main__":
-    file_path = '/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset3/with_rgb_and_depth_0.hdf5'
-    dataset = CloneLabDataset(file_path, HDF_DEFAULT_ORL_MAPPER, min_idx=0, max_idx=100000, episodic=True)
-    print(len(dataset))
-    obs, actions, rewards, next_obs, dones, weights = dataset[10]
-    print(obs["image"].shape)
-    # print(actions.shape)
-    # print(dataset[0][0]['proprioceptive'].shape)
