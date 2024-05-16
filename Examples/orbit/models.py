@@ -608,14 +608,10 @@ class GRUActor(nn.Module):
             x_img = x_img.view(batch * seq_len, channels, height, width)
             x_img = self.encoder(x_img)
             x_img = x_img.view(batch, seq_len, -1)
-            print(f'x_img shape: {x_img.shape}')
-            print(f'state["proprioceptive"] shape: {state["proprioceptive"].shape}')
             x_proprioceptive = state["proprioceptive"]
             if x_proprioceptive.dim() == 2:
                 x_proprioceptive = x_proprioceptive.unsqueeze(1)
-            print(f'x_proprioceptive shape: {x_proprioceptive.shape}')
             x = torch.cat([x_proprioceptive[:, :, 2:4], x_img], dim=2)
-            print(f'x shape: {x.shape}')
             if self.hidden_val is None:
                 self.hidden_val = torch.zeros(self.num_layers, batch, self.hidden_size).to(self.device)
 
@@ -626,14 +622,11 @@ class GRUActor(nn.Module):
             results = []
             for t in range(seq_len):
                 step_out = out[:, t, :]
-                print(f'step_out shape: {step_out.shape}')
                 for layer in self.mlp:
                     step_out = layer(step_out)
                 results.append(step_out)
 
             out = torch.stack(results, dim=1)
-            print(f'out shape: {out.shape}')
             if out.dim() == 3:
                 out = out.squeeze(1)
-            print(f'out shape: {out.shape}')
             return out

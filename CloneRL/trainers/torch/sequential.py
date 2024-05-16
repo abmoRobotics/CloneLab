@@ -85,7 +85,6 @@ class SequentialTrainer(BaseTrainer):
             train_loss = self._process_epoch(self.train_ds, current_epoch, train=True)
             # Validation phase
             val_loss = self._process_epoch(self.train_val_ds, current_epoch, train=False)
-            print(f"Epoch {current_epoch} - Train loss: {train_loss}, Val loss: {val_loss}")
             wandb.log({"epoch/validation_loss": val_loss}, step=(current_epoch+1)*len(self.train_ds))
             wandb.log({"epoch/train_loss": train_loss}, step=(current_epoch+1)*len(self.train_ds))
             wandb.log({"epoch": current_epoch}, step=(current_epoch+1)*len(self.train_ds))
