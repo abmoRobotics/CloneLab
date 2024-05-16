@@ -4,7 +4,7 @@ import os
 from setuptools import setup
 
 INSTALL_REQUIRES = [
-    "skrl==0.10.0",
+    "skrl==1.1.0",
     "torch",
     "numpy",
     "gymnasium",
@@ -16,7 +16,8 @@ setup(
     version="0.0.1",
     author="Anton Bjørndahl Mortensen",
     author_email="antonbm2008@gmail.com",
-    keywords=["Reinforcement Learning", "Imitation Learning", "Offline Reinforcement Learning", "BC"],
+    keywords=["Reinforcement Learning", "Imitation Learning",
+              "Offline Reinforcement Learning", "BC"],
     description="A library for offline reinforcement learning and imitation learning",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

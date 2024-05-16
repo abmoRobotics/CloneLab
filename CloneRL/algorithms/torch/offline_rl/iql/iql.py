@@ -21,7 +21,7 @@ class IQL(BaseAgent):
                  critic_policy: nn.Module,
                  cfg,
                  device="cuda:0" if torch.cuda.is_available() else "cpu",
-                 actions_lr: float = 3e-4,
+                 actions_lr: float = 1e-3,
                  value_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  discount: float = 0.99,
@@ -157,7 +157,7 @@ class IQL(BaseAgent):
     def evaluate(self, env, num_episodes=1000):
         pass
 
-    def act(self, state):
+    def act(self, state, done):
         distribution = self.actor(state)
         return distribution.sample()
         # return self.actor(state)

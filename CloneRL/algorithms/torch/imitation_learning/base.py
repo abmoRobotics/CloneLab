@@ -24,13 +24,14 @@ class BaseAgent:
 
         import wandb
         run_name = f"{time.strftime('%Y-%m-%d_%H-%M-%S')}"
-        wandb.init(name=run_name)
+        wandb.init(name=run_name, id=run_name)
 
     def train(self):
         raise NotImplementedError
 
     def save_model(self, name):
-        path = f"runs/{wandb.run.project}/{wandb.run.id}/checkpoints/"
+
+        path = f"runs/{wandb.run.project}/{wandb.run.name}/checkpoints/"
         if not os.path.exists(path):
             os.makedirs(path)
         torch.save(self.policy.state_dict(), path + name)

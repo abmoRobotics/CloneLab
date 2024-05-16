@@ -13,7 +13,7 @@ BC_DEFAULT_CONFIG = {
 }
 
 
-class BehaviourCloning(BaseAgent):
+class BehaviourCloningRNN(BaseAgent):
 
     def __init__(self, policy: nn.Module, cfg, device="cuda:0" if torch.cuda.is_available() else "cpu"):
         super().__init__(cfg, policy, device=device)
@@ -35,30 +35,19 @@ class BehaviourCloning(BaseAgent):
               masks: torch.Tensor) -> float:
         target_actions = action.float()
 
-        def compute_loss(target: torch.Tensor, actions: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
-            # print(f'target dtype: {target.dtype}, actions dtype: {actions.dtype}')
-            # loss = self.loss_fn(actions, target)
-            loss = (actions - target).pow(2)
-            weighted_loss = loss * weights
-            return weighted_loss.mean()
+        def compute_loss(target: torch.Tensor, actions: torch.Tensor, weights: torch.Tensor, masks: torch.Tensor) -> torch.Tensor:
+            loss = (actions - target).pow(2)  # (batch_size, seq_len, action_dim)
+            weighted_loss = loss * weights  # (batch_size, seq_len, action_dim)
+            weighted_loss = weighted_loss.sum(dim=2)  # (batch_size, seq_len)
+            weighted_loss = weighted_loss * masks  # (batch_size, seq_len)
 
-        # for key in state:
-        #     print(f'{key}: {state[key].shape}')
+            # Divide by the number of non-zero elements in the mask
+            return weighted_loss.sum() / masks.sum()
+
         actions = self.policy(state)
-        # actions = torch.zeros_like(action)
-        # prev_action = torch.zeros_like(action[0])
-        # for i in range(action.shape[0]):
-        #     new_proprioceptive = state["proprioceptive"][i].clone()
-        #     new_proprioceptive[0:2] = prev_action
-        #     temp_state = {
-        #         "proprioceptive": new_proprioceptive.unsqueeze(0),
-        #         "image": state["image"][i].unsqueeze(0)
-        #     }
-        #     actions[i] = self.policy(temp_state).squeeze(0)
-        #     prev_action = actions[i].detach()
-        loss = compute_loss(target_actions, actions, weights)
-        # tqdm.write(f'loss: {loss.mean().item()}')
-        # print(f'loss: {loss.mean().item()}')
+
+        loss = compute_loss(target_actions, actions, weights, masks)
+
         self.optimizer.zero_grad()
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
@@ -81,4 +70,6 @@ class BehaviourCloning(BaseAgent):
 
     def act(self, state, done, deterministic: bool = False):
         with torch.no_grad():
-            return self.policy(state)
+            action = self.policy.validate(state, done)
+            return action
+            # return self.policy(state)

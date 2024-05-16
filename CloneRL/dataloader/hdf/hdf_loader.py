@@ -17,13 +17,14 @@ HDF_DEFAULT_ORL_MAPPER = {
     "observations": "observations",
     "actions": "actions",
     "rewards": "rewards",
-    "next_observation": "next_observations",
-    "dones": "dones",
+    "next_observation": "observations",
+    "dones": "terminated",
 }
 
 
 class HDF5Dataset(Dataset):
     """HDF5 dataset for imitation learning and offline reinforcement learning."""
+
     def __init__(self, file_path: str, mapper: Dict[str, str], min_idx=0, max_idx=None):
         self.file_path = file_path
         self.mapper = mapper
@@ -40,14 +41,13 @@ class HDF5Dataset(Dataset):
     def __getitem__(self, idx):
         idx += self.min_idx
         data = {}
-
         for key, value in self.mapper.items():
-            if key == "actions":
-                data[key] = torch.from_numpy(np.atleast_1d(self.file[value][idx+1]))
+            if (key == "next_observation" or key == "next_action") and not self.file["terminated"][idx].any():
+                data[key] = torch.from_numpy(
+                    np.atleast_1d(self.file[value][idx+1]))
             else:
-                data[key] = torch.from_numpy(np.atleast_1d(self.file[value][idx]))
-
-
+                data[key] = torch.from_numpy(
+                    np.atleast_1d(self.file[value][idx]))
         return data
 
     def close(self):
