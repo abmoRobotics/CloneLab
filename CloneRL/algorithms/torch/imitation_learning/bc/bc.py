@@ -36,14 +36,11 @@ class BehaviourCloning(BaseAgent):
         target_actions = action.float()
 
         def compute_loss(target: torch.Tensor, actions: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
-            # print(f'target dtype: {target.dtype}, actions dtype: {actions.dtype}')
             # loss = self.loss_fn(actions, target)
             loss = (actions - target).pow(2)
             weighted_loss = loss * weights
             return weighted_loss.mean()
 
-        # for key in state:
-        #     print(f'{key}: {state[key].shape}')
         actions = self.policy(state)
         # actions = torch.zeros_like(action)
         # prev_action = torch.zeros_like(action[0])
@@ -58,7 +55,6 @@ class BehaviourCloning(BaseAgent):
         #     prev_action = actions[i].detach()
         loss = compute_loss(target_actions, actions, weights)
         # tqdm.write(f'loss: {loss.mean().item()}')
-        # print(f'loss: {loss.mean().item()}')
         self.optimizer.zero_grad()
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
