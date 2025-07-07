@@ -243,7 +243,7 @@ class GaussianDepthNetwork(nn.Module):
 
 
 class actor_gaussian_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=1, encoder_channels=60, image_channels=4):
+    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
         super(actor_gaussian_image, self).__init__()
         self.device = device
         self.proprioception_channels = proprioception_channels
@@ -267,7 +267,12 @@ class actor_gaussian_image(nn.Module):
 
     def forward(self, state: Dict[str, torch.Tensor]):
         x = self.encoder(state["image"])
-        x = torch.cat([state["proprioceptive"][:, 2:4], x], dim=1)
+        is_sequence = x.ndim == 3
+        if is_sequence:
+            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=2)
+        else:
+            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=1)
+        #x = torch.cat([state["proprioceptive"][:, 2:4], x], dim=1)
         for layer in self.mlp:
             x = layer(x)
         mu = x
@@ -276,7 +281,7 @@ class actor_gaussian_image(nn.Module):
 
 
 class actor_deterministic_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=2, encoder_channels=60, image_channels=4):
+    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=4):
         super(actor_deterministic_image, self).__init__()
         self.device = device
         self.proprioception_channels = proprioception_channels
@@ -299,7 +304,12 @@ class actor_deterministic_image(nn.Module):
 
     def forward(self, state: Dict[str, torch.Tensor]):
         x = self.encoder(state["image"])
-        x = torch.cat([state["proprioceptive"][:, 2:4], x], dim=1)
+        is_sequence = x.ndim == 3
+        if is_sequence:
+            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=2)
+        else:
+            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=1)
+        #x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=1)
         for layer in self.mlp:
             x = layer(x)
         return x
@@ -332,7 +342,7 @@ class actor_deterministic(nn.Module):
 
 
 class actor_gaussian(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=2, encoder_channels=60, image_channels=1):
+    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
         super(actor_gaussian, self).__init__()
         self.device = device
         self.proprioception_channels = proprioception_channels
@@ -361,7 +371,7 @@ class actor_gaussian(nn.Module):
 
 
 class conv_encoder(nn.Module):
-    def __init__(self, in_channels, input_dim=[90, 160], encoder_features=[8, 16, 32, 64], fc_features=[120, 60], encoder_activation="leaky_relu"):
+    def __init__(self, in_channels, input_dim=[224, 224], encoder_features=[8, 16, 32, 64], fc_features=[120, 60], encoder_activation="leaky_relu"):
         super().__init__()
         padding = 1
         stride = 1
@@ -393,22 +403,36 @@ class conv_encoder(nn.Module):
             self.fc_layers.append(nn.LeakyReLU())
             in_channels = feature
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
+
+        is_sequence = x.ndim == 5 # Check if input is a sequence (batch_size, seq_len, channels, height, width)
+
+        if is_sequence:
+            # Input shape will be (B, T, C, H, W)
+            batch_size, seq_len, channels, height, width = x.shape
+            # Reshape to (B * T, C, H, W) for convolutional layers
+            x = x.view(batch_size * seq_len, channels, height, width)
+
         # Apply the convolutional layers
         for layer in self.encoder_layers:
             x = layer(x)
 
         # Flatten the output for the fully connected layers
-        x = x.view(x.size(0), -1)
+        x = x.reshape(x.size(0), -1)
 
         # Apply the fully connected layers
         for layer in self.fc_layers:
             x = layer(x)
+
+        if is_sequence:
+            # Reshape back to (B, T, features) if input was a sequence
+            final_features = x.shape[1]
+            x = x.view(batch_size, seq_len, final_features)
         return x
 
 
 class v_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=4, encoder_channels=60, image_channels=1):
+    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
         super(v_image, self).__init__()
         self.device = device
         self.proprioception_channels = proprioception_channels
@@ -430,7 +454,12 @@ class v_image(nn.Module):
 
     def forward(self, state: Dict[str, torch.Tensor]):
         x = self.encoder(state["image"])
-        x = torch.cat([state["proprioceptive"], x], dim=1)
+        is_sequence = x.ndim == 3
+        if is_sequence:
+            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=2)
+        else:
+            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=1)
+        #x = torch.cat([state["proprioceptive"], x], dim=1)
         for layer in self.mlp:
             x = layer(x)
 
@@ -459,10 +488,10 @@ class v_image(nn.Module):
         return x
 
 class q_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proproception_channels=4, encoder_channels=60, image_channels=1):
+    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
         super(q_image, self).__init__()
         self.device = device
-        self.proprioception_channels = proproception_channels
+        self.proprioception_channels = proprioception_channels
         self.encoder_channels = encoder_channels
 
         self.encoder = conv_encoder(in_channels=image_channels)
@@ -482,7 +511,12 @@ class q_image(nn.Module):
     def forward(self, state: Dict[str, torch.Tensor], action: torch.Tensor):
 
         x = self.encoder(state["image"])
-        x = torch.cat([state["proprioceptive"], x], dim=1)
+        is_sequence = x.ndim == 3
+        if is_sequence:
+            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=2)
+        else:
+            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=1)
+        #x = torch.cat([state["proprioceptive"], x], dim=1)
         for layer in self.mlp:
             x = layer(x)
 
@@ -490,11 +524,11 @@ class q_image(nn.Module):
 
 
 class TwinQ_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu"):
+    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
         super(TwinQ_image, self).__init__()
         self.device = device
-        self.q1 = q_image()
-        self.q2 = q_image()
+        self.q1 = q_image(proprioception_channels=proprioception_channels, encoder_channels=encoder_channels, image_channels=image_channels).to(device)
+        self.q2 = q_image(proprioception_channels=proprioception_channels, encoder_channels=encoder_channels, image_channels=image_channels).to(device)
 
     def forward(self, state: Dict[str, torch.Tensor], action: torch.Tensor):
         q1 = self.q1(state, action)
@@ -543,7 +577,7 @@ class MlpPolicy(nn.Module):
         return x
 
 class GRUActor(nn.Module):
-    def __init__(self, image_channels=4, image_size=[90, 160], proprioception_channels=2, encoder_channels=60, device=None):
+    def __init__(self, image_channels=4, image_size=[90, 160], proprioception_channels=3, encoder_channels=60, device=None):
         super(GRUActor, self).__init__()
         self.device = device or ("cuda:0" if torch.cuda.is_available() else "cpu")
         # Assuming conv_encoder is defined elsewhere

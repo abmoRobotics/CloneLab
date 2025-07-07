@@ -48,6 +48,7 @@ class BaseTrainer():
         self.cfg = cfg
         self.policy: BaseAgent = policy
         # self.dataset = dataset
+        dataset.episodic = False
         if dataset.episodic:
             # Print warning
             print("NOTE: Episodic dataset detected, batch size corresponds to number of episodes")

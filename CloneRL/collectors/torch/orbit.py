@@ -35,7 +35,6 @@ class SequentialCollectorOrbit(SequentialCollectorBase):
                 obs, reward, done, truncated, info = self.env.step(action)
 
                 first_iter = False
-                # print(f'obs: {obs}, action: {action}, reward: {reward}, done: {done}, truncated: {truncated}, info: {info}')
 
                 # if done.any() or truncated.any():
                 #     obs, info = self.env.reset()

@@ -65,7 +65,7 @@ class IQL(BaseAgent):
         # state = torch.FloatTensor(states).to(self.device)
         # return self.actor.get_action(state, deterministic)
 
-    def train(self, state, action, reward, next_state, done, step):
+    def train(self, state, action, reward, next_state, done, weights, step, masks):
         def update_value_network(self: IQL, states, actions, logger=None):
             with torch.no_grad():
                 q1, q2 = self.critic_target(states, actions)
@@ -82,8 +82,9 @@ class IQL(BaseAgent):
 
         def update_q_network(self: IQL, states, actions, rewards, next_states, dones, logger=None):
             with torch.no_grad():
-                next_value = self.value(next_states)
+                next_value = self.value(next_states).squeeze(-1)
                 target_q = rewards + self.discount * (1 - dones.float()) * next_value
+                target_q = target_q.unsqueeze(-1)  # Ensure target_q has the same shape as q1 and q2
             q1, q2 = self.critic(states, actions)
             critic_loss = ((q1 - target_q) ** 2 + (q2 - target_q) ** 2).mean()
 
@@ -104,9 +105,9 @@ class IQL(BaseAgent):
                 exp_a = torch.clamp(exp_a, max=100)
 
             dist: torch.distributions.Normal = self.actor(states)
-            log_probs = -dist.log_prob(actions)
+            log_probs = -dist.log_prob(actions).sum(dim=-1, keepdim=True)  # Sum over action dimensions
             # actor_loss = -(exp_a.unsqueeze(-1) * log_probs).mean()
-            actor_loss = torch.mean(exp_a.unsqueeze(-1) * log_probs)
+            actor_loss = torch.mean(exp_a * log_probs)
             # mu = self.actor(states)
             # actor_loss = (exp_a.unsqueeze(-1) * (mu - actions) ** 2).mean()
 
@@ -116,6 +117,7 @@ class IQL(BaseAgent):
 
             wandb.log({"train/actor_loss": actor_loss.mean().item()}, step=step)
             wandb.log({"train/advantage": (q - value).mean().item()}, step=step)
+            return actor_loss
 
         def update_target_network(self: IQL, logger=None):
             for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
@@ -132,7 +134,7 @@ class IQL(BaseAgent):
         update_value_network(self, state, action)
 
         # Update the actor network
-        update_actor_network(self, state, action)
+        actor_loss = update_actor_network(self, state, action)
 
         # Update the Q network
         update_q_network(self, state, action, reward, next_state, done)
@@ -140,7 +142,9 @@ class IQL(BaseAgent):
         # Update the target network
         update_target_network(self)
 
-    def validate(self, state, action, reward, next_state, done) -> torch.Tensor:
+        return actor_loss.item()
+
+    def validate(self, state, action, reward, next_state, done, weights, step, masks) -> torch.Tensor:
         average_loss = 0
         with torch.no_grad():
             q1, q2 = self.critic(state, action)
@@ -184,3 +188,15 @@ class IQL(BaseAgent):
         torch.save(self.value_optimizer.state_dict(), base_path + "optimizer/value/" + name)
 
         torch.save(self.critic_target.state_dict(), base_path + "critic_target/" + name)
+
+    def load_model(self, path, name="best_model.pt"):
+        
+        self.actor.load_state_dict(torch.load(path + "actor/" + name))
+        self.critic.load_state_dict(torch.load(path + "critic/" + name))
+        self.value.load_state_dict(torch.load(path + "value/" + name))
+
+        self.actor_optimizer.load_state_dict(torch.load(path + "optimizer/actor/" + name))
+        self.critic_optimizer.load_state_dict(torch.load(path + "optimizer/critic/" + name))
+        self.value_optimizer.load_state_dict(torch.load(path + "optimizer/value/" + name))
+
+        self.critic_target.load_state_dict(torch.load(path + "critic_target/" + name))
