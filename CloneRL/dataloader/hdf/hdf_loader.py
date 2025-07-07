@@ -264,3 +264,172 @@ class CloneLabDataset(HDF5Dataset):
             else:
                 data[key] = torch.stack(data[key]).to(self.device)
         return data["obs"], data["actions"], data["rewards"], data["next_obs"], data["dones"], data["weights"]
+
+
+class HDF5DictDataset(Dataset):
+    """HDF5 dataset for data stored in a dictionary-like structure, where each top-level
+    key in the 'data' group represents an episode."""
+
+    def __init__(self, file_path: str, min_idx=0, max_idx=None):
+        self.file_path = file_path
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.episodic = True  # This dataset is episodic by default
+        self.min_idx = min_idx
+        self.max_idx = max_idx
+
+        with h5py.File(self.file_path, 'r') as file:
+            if 'data' not in file:
+                raise ValueError("HDF5 file must contain a 'data' group.")
+            demo_keys = sorted(list(file['data'].keys()))
+
+        if max_idx is None:
+            max_idx = len(demo_keys)
+
+        self.demo_keys = demo_keys#[min_idx:max_idx]
+
+    def __len__(self):
+        if self.max_idx is not None:
+           return min(self.max_idx, len(self.demo_keys)) - self.min_idx
+        return len(self.demo_keys)
+
+    def _extract_obs(self, obs_group):
+        # Process images
+        rgb = torch.from_numpy(obs_group['rgb_image'][:]).to(self.device).float()
+        depth = torch.from_numpy(obs_group['depth_image'][:]).to(self.device).float()
+
+        # from (N, H, W, C) to (N, C, H, W)
+        rgb = rgb.permute(0, 3, 1, 2)
+        depth = depth.permute(0, 3, 1, 2)
+
+        depth = torch.nan_to_num(depth, nan=256.0)
+        depth = torch.clamp(depth, min=0.0, max=256.0)
+
+        #image = torch.cat([depth, rgb], dim=1)
+        image = torch.cat([depth], dim=1)
+
+
+        # Process proprioceptive data
+        proprioceptive_keys = ['actions', 'distance', 'heading', 'angle_diff']
+        proprio_tensors = [torch.from_numpy(obs_group[key][:]).to(self.device).float() for key in proprioceptive_keys]
+        proprioceptive = torch.cat(proprio_tensors, dim=1)
+
+        # Height scan
+        #height_scan = torch.from_numpy(obs_group['height_scan'][:]).to(self.device).float()
+
+        obs_dict = {
+            "proprioceptive": proprioceptive,
+            "image": image, 
+            #"height_scan": height_scana
+        }
+
+        return obs_dict
+
+    def __getitem__(self, idx):
+        demo_key = self.demo_keys[idx]
+
+        with h5py.File(self.file_path, 'r') as file:
+            demo_group = file['data'][demo_key]
+
+            actions = torch.from_numpy(demo_group['actions'][:])#.to(self.device).float()
+            rewards = torch.from_numpy(demo_group['rewards'][:])#.to(self.device).float()
+            dones = torch.from_numpy(demo_group['dones'][:])#.to(self.device)  # bool
+
+            obs = self._extract_obs(demo_group['obs'])
+            next_obs = self._extract_obs(demo_group['next_obs'])
+
+        # Weights placeholder
+        weights = torch.ones_like(rewards)
+        # placeholder for masks
+        masks = torch.ones_like(rewards)
+        return obs, actions, rewards, next_obs, dones, weights, masks
+
+
+class HDF5DictDataset2(Dataset):
+    """HDF5 dataset for data stored in a dictionary-like structure, where each top-level
+    key in the 'data' group represents an episode."""
+
+    def __init__(self, file_path: str, min_idx=0, max_idx=None, trajectory_max_length=10):
+        self.file_path = file_path
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.episodic = True  # This dataset is episodic by default
+        self.min_idx = min_idx
+        self.max_idx = max_idx
+        self.trajectory_max_length = trajectory_max_length
+
+        with h5py.File(self.file_path, 'r') as file:
+            if 'data' not in file:
+                raise ValueError("HDF5 file must contain a 'data' group.")
+            demo_keys = sorted(list(file['data'].keys()))
+
+        if max_idx is None:
+            max_idx = len(demo_keys)
+
+        self.demo_keys = demo_keys#[min_idx:max_idx]
+
+    def __len__(self):
+        if self.max_idx is not None:
+           return min(self.max_idx, len(self.demo_keys)) - self.min_idx
+        return len(self.demo_keys)
+
+    def _extract_obs(self, obs_group, indices=None):
+        # Process images
+        if indices is None:
+            rgb = torch.from_numpy(obs_group['rgb_image'][:])
+            depth = torch.from_numpy(obs_group['depth_image'][:])
+        else:
+            rgb = torch.from_numpy(obs_group['rgb_image'][indices])
+            depth = torch.from_numpy(obs_group['depth_image'][indices])
+
+        # from (N, H, W, C) to (N, C, H, W)
+        rgb = rgb.permute(0, 3, 1, 2)
+        depth = depth.permute(0, 3, 1, 2)
+
+        depth = torch.nan_to_num(depth, nan=256.0)
+        depth = torch.clamp(depth, min=0.0, max=256.0)
+
+        #image = torch.cat([depth, rgb], dim=1)
+        image = torch.cat([depth], dim=1)
+
+
+        # Process proprioceptive data
+        proprioceptive_keys = ['actions', 'angle_diff', 'distance', 'heading']
+        proprio_tensors = [torch.from_numpy(obs_group[key][:]).to(self.device).float() for key in proprioceptive_keys]
+        proprioceptive = torch.cat(proprio_tensors, dim=1)
+
+        # Height scan
+        #height_scan = torch.from_numpy(obs_group['height_scan'][:]).to(self.device).float()
+
+        obs_dict = {
+            "proprioceptive": proprioceptive,
+            "image": image, 
+            #"height_scan": height_scana
+        }
+
+        return obs_dict
+
+    def __getitem__(self, idx):
+        demo_key = self.demo_keys[idx]
+        # Randomly generate indicies for the trajectory to sample from demo_key
+            
+        with h5py.File(self.file_path, 'r') as file:
+            num_samples = file['data'][demo_key].attrs.get('num_samples', None)
+            random_indices = np.random.choice(num_samples, self.trajectory_max_length, replace=False)
+            # sort the indices to maintain the order
+            random_indices = np.sort(random_indices)
+
+
+            demo_group = file['data'][demo_key]
+    
+
+            actions = torch.from_numpy(demo_group['actions'][random_indices])
+            rewards = torch.from_numpy(demo_group['rewards'][random_indices])
+            dones = torch.from_numpy(demo_group['dones'][random_indices])
+
+            obs = self._extract_obs(demo_group['obs'], indices=random_indices)
+            next_obs = self._extract_obs(demo_group['next_obs'], indices=random_indices)
+
+        # Weights placeholder
+        weights = torch.ones_like(rewards)
+        # placeholder for masks
+        masks = torch.ones_like(rewards)
+        return obs, actions, rewards, next_obs, dones, weights, masks

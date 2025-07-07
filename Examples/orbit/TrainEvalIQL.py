@@ -47,9 +47,9 @@ def train_bc():
         data, HDF_DEFAULT_ORL_MAPPER, min_idx=80_000, max_idx=85_000)
 
     # Define model
-    actor = actor_gaussian_image().to("cuda:0")
-    critic = TwinQ_image().to("cuda:0")
-    value = v_image().to("cuda:0")
+    actor = actor_gaussian_image(proprioception_channels=5).to("cuda:0")
+    critic = TwinQ_image(proprioception_channels=5).to("cuda:0")
+    value = v_image(proprioception_channels=5).to("cuda:0")
 
     # Choose the algorithm to train with
     agent = IQL(actor_policy=actor,

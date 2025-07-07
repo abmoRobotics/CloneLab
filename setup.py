@@ -4,11 +4,13 @@ import os
 from setuptools import setup
 
 INSTALL_REQUIRES = [
-    "skrl==1.1.0",
+    #"skrl==1.1.0",
+    "skrl",
     "torch",
     "numpy",
     "gymnasium",
     "wandb",
+    "xarray",
 ]
 
 setup(
