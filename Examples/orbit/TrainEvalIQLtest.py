@@ -17,7 +17,7 @@ from CloneRL.algorithms.torch.offline_rl.iql import IQL
 from CloneRL.dataloader.hdf import (HDF_DEFAULT_IL_MAPPER,
                                     HDF_DEFAULT_ORL_MAPPER, HDF5Dataset)
 from CloneRL.dataloader.hdf.hdf_loader import (
-    CloneLabDataset,HDF5DictDataset, HDF5DictDataset2)
+    CloneLabDataset,HDF5DictDataset, HDF5DictDataset2, HDF5DictDatasetRandom)
 from CloneRL.trainers.torch.sequential import SequentialTrainer as Trainer
 import gymnasium as gym
 parser = argparse.ArgumentParser("Welcome to Isaac Lab: Omniverse Robotics Environments!")
@@ -175,8 +175,10 @@ def train_iql():
     # data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset1/with_rgb_and_depth_2.hdf5"
     # data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset4_180_320/with_rgb_and_depth_0.hdf5"
     #data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset3/with_rgb_and_depth_0.hdf5"
-    data = "/media/anton/T7 Shield/University/PHD/rover_simulation_datasets/dataset_new2.hdf5"
-    data2 = "/media/anton/T7 Shield/University/PHD/rover_simulation_datasets/dataset_new2_smallerer.hdf5"
+    #data = "/home/robotlab/Documents/datasets/dataset_new2_combined.hdf5" # OLD ONE HERE
+    #data2 = "/home/robotlab/Documents/datasets/combined_dataset_last_episodes.hdf5" # OLD ONE HERE
+    data = "/home/robotlab/ws/RLRoverLab/datasets/dataset_old_camera_pos.hdf5"
+
     # Define what data to use typically "observations" and "actions", but for t his example we train on depth aswell
     # HDF_DEFAULT_ORL_MAPPER = {
     #     "observations": "observations",
@@ -194,14 +196,14 @@ def train_iql():
     }
 
     # Define the dataset and validation dataset, we use the same dataset for both here
-    dataset = HDF5DictDataset(data, min_idx=100, max_idx=1100)
-    dataset_val = HDF5DictDataset(
-        data2, min_idx=1, max_idx=100)
+    dataset = HDF5DictDatasetRandom(data, min_idx=100, total_samples=120000)
+    dataset_val = HDF5DictDatasetRandom(
+        data, min_idx=1, max_idx=100, total_samples=10000)
 
     # Define model
-    actor = actor_gaussian_image(proprioception_channels=3).to("cuda:0")
-    critic = TwinQ_image(proprioception_channels=3).to("cuda:0")
-    value = v_image(proprioception_channels=3).to("cuda:0")
+    actor = actor_gaussian_image(proprioception_channels=3, image_channels=2).to("cuda:0")
+    critic = TwinQ_image(proprioception_channels=3, image_channels=2).to("cuda:0")
+    value = v_image(proprioception_channels=3, image_channels=2).to("cuda:0")
 
     # Choose the algorithm to train with
     agent = IQL(actor_policy=actor,
@@ -212,8 +214,10 @@ def train_iql():
     #def env_loader(): return wrap_env(load_isaac_orbit_env(task_name="AAURoverEnvCamera-v0"), wrapper="isaac-orbit")
 
     # Define the trainer
-    trainer = Trainer(cfg={"batch_size": 1, "epochs": 10, "num_workers": 4}, policy=agent,
-                      dataset=dataset, val_dataset=dataset_val)
+    trainer = Trainer(cfg={"batch_size": 100, "epochs": 10, "num_workers": 4, "shuffle": True},
+                      policy=agent,
+                      dataset=dataset, 
+                      val_dataset=dataset_val)
 
     # Start training
     trainer.train()
@@ -238,7 +242,8 @@ def eval(trainer: Trainer):
     # #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
     # #env = wrap_env(env, wrapper="isaaclab")
     # trainer.evaluate(env, num_steps=10000)
-    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
+    #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
+    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
     #env = wrap_env(env)
     trainer.evaluate(env, num_steps=1000000)
 

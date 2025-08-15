@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 
 import gymnasium as gym
 import h5py
@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import xarray as xr
 from torch.utils.data import Dataset
+import torch.nn.functional as F
 
 # Default mapper for imitation learning
 HDF_DEFAULT_IL_MAPPER = {
@@ -301,11 +302,19 @@ class HDF5DictDataset(Dataset):
         rgb = rgb.permute(0, 3, 1, 2)
         depth = depth.permute(0, 3, 1, 2)
 
-        depth = torch.nan_to_num(depth, nan=256.0)
-        depth = torch.clamp(depth, min=0.0, max=256.0)
+        depth = torch.nan_to_num(depth, nan=6.0)
+        depth = torch.where(torch.isinf(depth),torch.tensor(6.0), depth)
+        depth = torch.clamp(depth, min=0.0, max=6.0) #/ 4
 
+        depth[:, 50:90, 30:130] = 0.0
+        rgb[:,50:90, 30:130] = 0.0
+        #depth = F.interpolate(depth, size=(90, 160), mode='bilinear', align_corners=False)
+        grayscale = rgb[:, 0] * 0.2989 + rgb[:, 1] * 0.5870 + rgb[:, 2] * 0.1140
+        grayscale = grayscale / 255
+        grayscale = grayscale.unsqueeze(1)
+        #grayscale.unsqueeze()
         #image = torch.cat([depth, rgb], dim=1)
-        image = torch.cat([depth], dim=1)
+        image = torch.cat([depth, grayscale], dim=1)
 
 
         # Process proprioceptive data
@@ -324,24 +333,56 @@ class HDF5DictDataset(Dataset):
 
         return obs_dict
 
+    # def __getitem__(self, idx):
+    #     demo_key = self.demo_keys[idx]
+
+    #     with h5py.File(self.file_path, 'r') as file:
+    #         demo_group = file['data'][demo_key]
+
+    #         actions = torch.from_numpy(demo_group['actions'][:])#.to(self.device).float()
+    #         rewards = torch.from_numpy(demo_group['rewards'][:])#.to(self.device).float()
+    #         dones = torch.from_numpy(demo_group['dones'][:])#.to(self.device)  # bool
+
+    #         obs = self._extract_obs(demo_group['obs'])
+    #         next_obs = self._extract_obs(demo_group['next_obs'])
+
+    #     # Weights placeholder
+    #     weights = torch.ones_like(rewards)
+    #     # placeholder for masks
+    #     masks = torch.ones_like(rewards)
+    #     return obs, actions, rewards, next_obs, dones, weights, masks
     def __getitem__(self, idx):
         demo_key = self.demo_keys[idx]
 
         with h5py.File(self.file_path, 'r') as file:
             demo_group = file['data'][demo_key]
 
-            actions = torch.from_numpy(demo_group['actions'][:])#.to(self.device).float()
-            rewards = torch.from_numpy(demo_group['rewards'][:])#.to(self.device).float()
-            dones = torch.from_numpy(demo_group['dones'][:])#.to(self.device)  # bool
+            # Load the full episode data
+            full_actions = torch.from_numpy(demo_group['actions'][:])#.to(self.device).float()
+            full_rewards = torch.from_numpy(demo_group['rewards'][:])#.to(self.device).float()
+            full_dones = torch.from_numpy(demo_group['dones'][:])#.to(self.device)  # bool
 
-            obs = self._extract_obs(demo_group['obs'])
-            next_obs = self._extract_obs(demo_group['next_obs'])
+            full_obs = self._extract_obs(demo_group['obs'])
+            full_next_obs = self._extract_obs(demo_group['next_obs'])
 
-        # Weights placeholder
+        # --- MODIFICATION START ---
+        # Slice all tensors to exclude the last timestep
+        actions = full_actions[:-1]
+        rewards = full_rewards[:-1]
+        dones = full_dones[:-1]
+        
+        # Slice each tensor within the observation dictionaries
+        obs = {key: tensor[:-1] for key, tensor in full_obs.items()}
+        next_obs = {key: tensor[:-1] for key, tensor in full_next_obs.items()}
+        # --- MODIFICATION END ---
+
+        # Weights placeholder (now correctly sized)
         weights = torch.ones_like(rewards)
-        # placeholder for masks
+        # placeholder for masks (now correctly sized)
         masks = torch.ones_like(rewards)
+        
         return obs, actions, rewards, next_obs, dones, weights, masks
+
 
 
 class HDF5DictDataset2(Dataset):
@@ -433,3 +474,98 @@ class HDF5DictDataset2(Dataset):
         # placeholder for masks
         masks = torch.ones_like(rewards)
         return obs, actions, rewards, next_obs, dones, weights, masks
+
+
+class HDF5DictDatasetRandom(Dataset):
+    """HDF5 dataset that returns random timesteps from random episodes to reduce overfitting.
+    Each __getitem__ call returns a single timestep from a randomly selected episode."""
+
+    def __init__(self, file_path: str, min_idx=0, max_idx=None, total_samples=120000):
+        self.file_path = file_path
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.episodic = False  # This dataset returns individual timesteps, not episodes
+        self.min_idx = min_idx
+        self.max_idx = max_idx
+        self.total_samples = total_samples  # Virtual dataset size
+
+        with h5py.File(self.file_path, 'r') as file:
+            if 'data' not in file:
+                raise ValueError("HDF5 file must contain a 'data' group.")
+            demo_keys = sorted(list(file['data'].keys()))
+            
+            # Build a list of valid (episode, timestep) pairs
+            self.valid_indices = []
+            for demo_key in demo_keys:
+                demo_group = file['data'][demo_key]
+                num_samples = demo_group.attrs.get('num_samples', len(demo_group['actions']))
+                # Exclude the last timestep to ensure we have valid next_obs
+                for timestep in range(num_samples - 1):
+                    self.valid_indices.append((demo_key, timestep))
+
+        if max_idx is None:
+            max_idx = len(demo_keys)
+
+        self.demo_keys = demo_keys
+
+    def __len__(self):
+        return self.total_samples
+
+    def _extract_obs_single(self, obs_group, timestep):
+        """Extract observations for a single timestep."""
+        # Process images
+        rgb = torch.from_numpy(obs_group['rgb_image'][timestep]).to(self.device).float()
+        depth = torch.from_numpy(obs_group['depth_image'][timestep]).to(self.device).float()
+
+        # from (H, W, C) to (C, H, W) for single timestep
+        rgb = rgb.permute(2, 0, 1)
+        depth = depth.permute(2, 0, 1)
+
+        depth = torch.nan_to_num(depth, nan=6.0)
+        depth = torch.where(torch.isinf(depth), torch.tensor(6.0), depth)
+        depth = torch.clamp(depth, min=0.0, max=6.0)
+
+        # Apply masking
+        depth[:, 50:90, 30:130] = 0.0
+        rgb[:, 50:90, 30:130] = 0.0
+        
+        # Convert to grayscale
+        grayscale = rgb[0] * 0.2989 + rgb[1] * 0.5870 + rgb[2] * 0.1140
+        grayscale = grayscale / 255
+        grayscale = grayscale.unsqueeze(0)
+        
+        image = torch.cat([depth, grayscale], dim=0)
+
+        # Process proprioceptive data
+        proprioceptive_keys = ['actions', 'distance', 'heading', 'angle_diff']
+        proprio_tensors = [torch.from_numpy(np.atleast_1d(obs_group[key][timestep])).to(self.device).float() 
+                          for key in proprioceptive_keys]
+        proprioceptive = torch.cat(proprio_tensors, dim=0)
+
+        obs_dict = {
+            "proprioceptive": proprioceptive,
+            "image": image,
+        }
+
+        return obs_dict
+
+    def __getitem__(self, idx):
+        # Randomly select a valid (episode, timestep) pair
+        random_idx = np.random.randint(0, len(self.valid_indices))
+        demo_key, timestep = self.valid_indices[random_idx]
+
+        with h5py.File(self.file_path, 'r') as file:
+            demo_group = file['data'][demo_key]
+
+            # Load single timestep data - wrap scalars in arrays
+            action = torch.from_numpy(np.atleast_1d(demo_group['actions'][timestep])).to(self.device).float()
+            reward = torch.from_numpy(np.atleast_1d(demo_group['rewards'][timestep])).to(self.device).float()
+            done = torch.from_numpy(np.atleast_1d(demo_group['dones'][timestep])).to(self.device)
+
+            obs = self._extract_obs_single(demo_group['obs'], timestep)
+            next_obs = self._extract_obs_single(demo_group['next_obs'], timestep)
+
+        # Weights and masks placeholders
+        weight = torch.ones_like(reward)
+        mask = torch.ones_like(reward)
+        
+        return obs, action, reward, next_obs, done, weight, mask

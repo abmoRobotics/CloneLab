@@ -44,7 +44,7 @@ def main():
     parser.add_argument("--model_path", type=str, required=True, help="Path to the saved model weights (.pt file). E.g. runs/some_run/checkpoints/best_model.pt")
     parser.add_argument("--output_name", type=str, required=True, help="Name of the output ONNX file. E.g. policy.onnx")
     parser.add_argument("--image_channels", type=int, default=1, help="Number of channels in the input image.")
-    parser.add_argument("--proprio_dim", type=int, default=4, help="Dimension of the proprioceptive input.")
+    parser.add_argument("--proprio_dim", type=int, default=5, help="Dimension of the proprioceptive input.")
 
     args = parser.parse_args()
 

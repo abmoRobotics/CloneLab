@@ -1,7 +1,7 @@
 import copy
 import threading
 from typing import Any, Dict, List, Optional, Tuple, Union
-
+import torch.nn.functional as F
 import torch
 import tqdm
 from skrl.envs.loaders.torch import load_isaaclab_env
@@ -185,6 +185,17 @@ class SequentialTrainer(BaseTrainer):
                     obs = obs["policy"]
                     ##### NEW IMPLEMENTATION #####
                     depth_image = obs["depth_image"].permute(0, 3, 1, 2)  # Convert to (B, C, H, W)
+                    depth_image = torch.clip(depth_image, 0.0, 6.0)
+                    depth_image[:, 50:90, 30:130] = 0.0
+                    rgb = obs["rgb_image"].permute(0,3,1,2)
+                    rgb[:, 50:90,30:130] = 0.0
+                    grayscale = rgb[:, 0] * 0.2989 + rgb[:, 1] * 0.5870 + rgb[:, 2] * 0.1140
+                    grayscale = grayscale / 255
+                    grayscale = grayscale.unsqueeze(1)
+                    #grayscale.unsqueeze()
+                    #image = torch.cat([depth, rgb], dim=1)
+                    image = torch.cat([depth_image, grayscale], dim=1)
+                    #depth_image = F.interpolate(depth_image, size=(90, 160), mode='bilinear', align_corners=False)
                     actions = obs["actions"]
                     distance_obs = obs["distance"]
                     heading_obs = obs["heading"]
@@ -193,7 +204,7 @@ class SequentialTrainer(BaseTrainer):
                     proprioceptive_obs = torch.cat((actions, distance_obs, heading_obs, angle_diff_obs), dim=1)
                     state = {
                         'proprioceptive': proprioceptive_obs,
-                        'image': depth_image
+                        'image': image#depth_image
                     
                     }
                     actions = self.policy.act(state, terminated)
