@@ -6,7 +6,8 @@ from CloneRL.trainers.torch.sequential import SequentialTrainer as Trainer
 import multiprocessing as mp
 from TrainEvalIQLtest import load_isaaclab_env
 from CloneRL.dataloader.hdf.hdf_loader import HDF5DictDataset
-data = "/media/anton/T7 Shield/University/PHD/rover_simulation_datasets/dataset_new2.hdf5"
+data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
+data2 = "/home/robotlab/Documents/datasets/dataset_new2_smallerer.hdf5"
 def evaluate_model(checkpoint_path, model_name):
     """
     Loads a pre-trained model and evaluates it.
@@ -33,8 +34,9 @@ def evaluate_model(checkpoint_path, model_name):
     trainer = Trainer(cfg={}, policy=agent, dataset=dataset, val_dataset=dataset_val)
 
     # Evaluate the model
-    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
-    trainer.evaluate(env, num_steps=1000000)
+    #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
+    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
+    trainer.evaluate(env, num_steps=10000)
 
 
 if __name__ == "__main__":
@@ -43,8 +45,8 @@ if __name__ == "__main__":
 
     # Define the path to the checkpoint
     # Make sure to replace this with the actual path to your checkpoint
-    checkpoint_path = "runs/CloneLab-Examples_orbit/run_1/checkpoints/"
-    model_name = "best_model_9.pt"
+    checkpoint_path = "runs/CloneLab-Examples_orbit/2025-08-06_14-57-47/checkpoints/"
+    model_name = "best_model_1.pt"
 
     # Run the evaluation
     evaluate_model(checkpoint_path, model_name=model_name)
