@@ -9,9 +9,7 @@ import sys
 import isaaclab
 #from isaaclab.app import AppLauncher
 from models import TwinQ_image, actor_gaussian, actor_gaussian_image, v_image
-#from skrl.envs.loaders.torch import load_isaac_orbit_env
-from skrl.envs.wrappers.torch import wrap_env
-#from skrl.utils import set_seed
+# from skrl.utils import set_seed
 from CloneRL.utils import set_seed
 #from skrl.envs.loaders.torch import load_isaaclab_env
 from CloneRL.algorithms.torch.offline_rl.iql import IQL
@@ -254,4 +252,3 @@ if __name__ == "__main__":
     mp.set_start_method('spawn', force=True)
     trainer = train_iql()
     eval(trainer)
-
