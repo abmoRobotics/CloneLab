@@ -71,7 +71,17 @@ class SequentialTrainer(BaseTrainer):
                     actions = self.policy.act(state)
 
                 next_obs, rewards, terminated, truncated, next_info = self.env.step(actions)
+                # Log reward metrics if supported by the policy
+                if hasattr(self.policy, "record_transitions"):
+                    self.policy.record_transitions(rewards, terminated, truncated, next_info, step=timestep)
                 obs, info = next_obs, next_info
+
+        # Ensure run-level summary (e.g., success rate) is persisted to W&B
+        if hasattr(self.policy, "finalize_summary"):
+            try:
+                self.policy.finalize_summary()
+            except Exception:
+                pass
 
     def train(self):
         """
@@ -210,5 +220,9 @@ class SequentialTrainer(BaseTrainer):
                     actions = self.policy.act(state, terminated)
 
                 next_obs, rewards, terminated, truncated, next_info = env.step(actions)
-
+                # Log reward metrics if supported by the policy
+                if hasattr(self.policy, "record_transitions"):
+                    self.policy.record_transitions(rewards, terminated, truncated, next_info, step=timestep)
+                # print(f'log keys {next_info["log"].keys()}')
+                # print(f'episode keys {next_info["episode"].keys()}')
                 obs, info = next_obs, next_info

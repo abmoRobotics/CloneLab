@@ -1,10 +1,9 @@
-
 import torch
 from models import actor_gaussian_image, TwinQ_image, v_image
 from CloneRL.algorithms.torch.offline_rl.iql import IQL
 from CloneRL.trainers.torch.sequential import SequentialTrainer as Trainer
 import multiprocessing as mp
-from TrainEvalIQLtest import load_isaaclab_env
+from TrainEvalIQL import load_isaaclab_env
 from CloneRL.dataloader.hdf.hdf_loader import HDF5DictDataset
 data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
 data2 = "/home/robotlab/Documents/datasets/dataset_new2_smallerer.hdf5"
@@ -45,7 +44,9 @@ if __name__ == "__main__":
 
     # Define the path to the checkpoint
     # Make sure to replace this with the actual path to your checkpoint
+    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-19_17-35-24/checkpoints/"
     checkpoint_path = "runs/CloneLab-Examples_orbit/2025-08-12_10-12-20/checkpoints/"
+    model_name = "best_model_8.pt"
     model_name = "best_model_9.pt"
 
     # Run the evaluation
