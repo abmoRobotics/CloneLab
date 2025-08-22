@@ -52,7 +52,7 @@ class IQL(BaseAgent):
         self.expectile = expectile
 
         self.loss_fn = nn.MSELoss()
-        self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.amp.GradScaler()
 
         self.initialize()
 
