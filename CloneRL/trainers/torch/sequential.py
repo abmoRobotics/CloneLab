@@ -196,7 +196,8 @@ class SequentialTrainer(BaseTrainer):
                     ##### NEW IMPLEMENTATION #####
                     depth_image = obs["depth_image"].permute(0, 3, 1, 2)  # Convert to (B, C, H, W)
                     depth_image = torch.clip(depth_image, 0.0, 6.0)
-                    depth_image[:, 50:90, 30:130] = 0.0
+                    #depth_image[:, 50:90, 30:130] = 0.0
+                    depth_image[:, 200:] = 0.0
                     rgb = obs["rgb_image"].permute(0,3,1,2)
                     rgb[:, 50:90,30:130] = 0.0
                     grayscale = rgb[:, 0] * 0.2989 + rgb[:, 1] * 0.5870 + rgb[:, 2] * 0.1140
@@ -204,7 +205,8 @@ class SequentialTrainer(BaseTrainer):
                     grayscale = grayscale.unsqueeze(1)
                     #grayscale.unsqueeze()
                     #image = torch.cat([depth, rgb], dim=1)
-                    image = torch.cat([depth_image, grayscale], dim=1)
+                    #image = torch.cat([depth_image, grayscale], dim=1)
+                    image = depth_image
                     #depth_image = F.interpolate(depth_image, size=(90, 160), mode='bilinear', align_corners=False)
                     actions = obs["actions"]
                     distance_obs = obs["distance"]
