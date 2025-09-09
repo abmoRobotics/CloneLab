@@ -243,41 +243,100 @@ class GaussianDepthNetwork(nn.Module):
 
 
 class actor_gaussian_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
+    def __init__(self, 
+                 device="cuda:0" if torch.cuda.is_available() else "cpu", 
+                 proprioception_channels=3, 
+                 encoder_channels=60, 
+                 image_channels=1,
+                 action_dim=2,
+                 mlp_features=[256, 160, 128],
+                 image_input_dim=[224, 224],
+                 image_encoder_features=[8, 16, 32, 64],
+                 image_fc_features=[120, 60],
+                 activation="leaky_relu",
+                 dropout_rate=0,
+                 use_batch_norm=False,
+                 min_log_std=-20.0,
+                 max_log_std=2.0,
+                 state_independent_log_std=True):
         super(actor_gaussian_image, self).__init__()
         self.device = device
         self.proprioception_channels = proprioception_channels
         self.encoder_channels = encoder_channels
+        self.action_dim = action_dim
+        self.min_log_std = min_log_std
+        self.max_log_std = max_log_std
+        self.state_independent_log_std = state_independent_log_std
 
-        self.encoder = conv_encoder(in_channels=image_channels)
+        self.encoder = conv_encoder(in_channels=image_channels, input_dim=image_input_dim, encoder_features=image_encoder_features, fc_features=image_fc_features, encoder_activation=activation)
 
         self.mlp = nn.ModuleList()
-
         in_channels = self.proprioception_channels + self.encoder_channels
-        # action_space = action_space.shape[0]
-        mlp_features = [256, 160, 128]
+        
         for feature in mlp_features:
             self.mlp.append(nn.Linear(in_channels, feature))
-            self.mlp.append(nn.LeakyReLU())
+            if use_batch_norm:
+                self.mlp.append(nn.BatchNorm1d(feature))
+            self.mlp.append(get_activation(activation))
+            if dropout_rate > 0:
+                self.mlp.append(nn.Dropout(dropout_rate))
             in_channels = feature
 
-        self.mlp.append(nn.Linear(in_channels, 2))
-        self.mlp.append(nn.Tanh())
-        self.log_std = nn.Parameter(torch.zeros(2, dtype=torch.float32))
-
-    def forward(self, state: Dict[str, torch.Tensor]):
-        x = self.encoder(state["image"])
-        is_sequence = x.ndim == 3
-        if is_sequence:
-            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=2)
+        # Separate heads for mean and log_std
+        self.mean_head = nn.Linear(in_channels, self.action_dim)
+        if state_independent_log_std:
+            self.log_std = nn.Parameter(torch.zeros(self.action_dim, dtype=torch.float32))
         else:
-            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=1)
-        #x = torch.cat([state["proprioceptive"][:, 2:4], x], dim=1)
+            self.log_std_head = nn.Linear(in_channels, self.action_dim)
+
+        # Initialize weights properly
+        self._init_weights()
+
+    def _init_weights(self):
+        """Initialize network weights using Xavier initialization"""
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+    
+    def forward(self, state: Dict[str, torch.Tensor]):
+        # Encode image
+        x_img = self.encoder(state["image"])
+        
+        # Handle sequential vs batch data
+        is_sequence = x_img.ndim == 3
+        proprioceptive = state["proprioceptive"]
+        
+        if is_sequence:
+            # For sequential data: (batch, seq_len, features)
+            x = torch.cat([proprioceptive[..., :self.proprioception_channels], x_img], dim=2)
+        else:
+            # For batch data: (batch, features)
+            x = torch.cat([proprioceptive[..., :self.proprioception_channels], x_img], dim=1)
+        
+        # Pass through MLP
         for layer in self.mlp:
             x = layer(x)
-        mu = x
-        log_std = torch.clamp(self.log_std, min=-20, max=2)
+        
+        # Get mean and log_std
+        mu = torch.tanh(self.mean_head(x))  # Bound actions to [-1, 1]
+        if self.state_independent_log_std:
+            log_std = torch.clamp(self.log_std, min=self.min_log_std, max=self.max_log_std)
+        else:
+            log_std = self.log_std_head(x)
+            log_std = torch.clamp(log_std, min=self.min_log_std, max=self.max_log_std)
+
         return torch.distributions.Normal(mu, log_std.exp())
+    
+    def get_action(self, state: Dict[str, torch.Tensor], deterministic=True):
+        """Get action for deployment"""
+        with torch.no_grad():
+            dist = self.forward(state)
+            if deterministic:
+                return dist.mean
+            else:
+                return dist.sample()
 
 
 class actor_deterministic_image(nn.Module):
@@ -410,7 +469,6 @@ class conv_encoder(nn.Module):
     def forward(self, x: torch.Tensor):
 
         is_sequence = x.ndim == 5 # Check if input is a sequence (batch_size, seq_len, channels, height, width)
-
         if is_sequence:
             # Input shape will be (B, T, C, H, W)
             batch_size, seq_len, channels, height, width = x.shape
@@ -423,7 +481,7 @@ class conv_encoder(nn.Module):
 
         # Flatten the output for the fully connected layers
         x = x.reshape(x.size(0), -1)
-
+        
         # Apply the fully connected layers
         for layer in self.fc_layers:
             x = layer(x)
@@ -436,108 +494,182 @@ class conv_encoder(nn.Module):
 
 
 class v_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
+    def __init__(self, 
+                 device="cuda:0" if torch.cuda.is_available() else "cpu", 
+                 proprioception_channels=3, 
+                 encoder_channels=60, 
+                 image_channels=1,
+                 mlp_features=[256, 160, 128],
+                 image_input_dim=[224, 224],
+                 image_encoder_features=[8, 16, 32, 64],
+                 image_fc_features=[120, 60],
+                 activation="leaky_relu",
+                 dropout_rate=0,
+                 use_batch_norm=False,
+                 **kwargs):
         super(v_image, self).__init__()
         self.device = device
         self.proprioception_channels = proprioception_channels
         self.encoder_channels = encoder_channels
 
-        self.encoder = conv_encoder(in_channels=image_channels)
+        self.encoder = conv_encoder(in_channels=image_channels, input_dim=image_input_dim, encoder_features=image_encoder_features, fc_features=image_fc_features, encoder_activation=activation)
 
         self.mlp = nn.ModuleList()
-
         in_channels = self.proprioception_channels + self.encoder_channels
-        # action_space = action_space.shape[0]
-        mlp_features = [256, 160, 128]
+        
         for feature in mlp_features:
             self.mlp.append(nn.Linear(in_channels, feature))
-            self.mlp.append(nn.LeakyReLU())
+            if use_batch_norm:
+                self.mlp.append(nn.BatchNorm1d(feature))
+            self.mlp.append(get_activation(activation))
+            if dropout_rate > 0:
+                self.mlp.append(nn.Dropout(dropout_rate))
             in_channels = feature
 
-        self.mlp.append(nn.Linear(in_channels, 1))
+        self.value_head = nn.Linear(in_channels, 1)
+        
+        # Initialize weights
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize network weights using Xavier initialization"""
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, state: Dict[str, torch.Tensor]):
-        x = self.encoder(state["image"])
-        is_sequence = x.ndim == 3
+        # Encode image
+        x_img = self.encoder(state["image"])
+        
+        # Handle sequential vs batch data
+        is_sequence = x_img.ndim == 3
+        proprioceptive = state["proprioceptive"]
+        
         if is_sequence:
-            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=2)
+            # For sequential data: (batch, seq_len, features)
+            x = torch.cat([proprioceptive[..., :self.proprioception_channels], x_img], dim=2)
         else:
-            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=1)
-        #x = torch.cat([state["proprioceptive"], x], dim=1)
+            # For batch data: (batch, features)
+            x = torch.cat([proprioceptive[..., :self.proprioception_channels], x_img], dim=1)
+        
+        # Pass through MLP
         for layer in self.mlp:
             x = layer(x)
-
-        return x
-
-        x0 = x["observations"].to(self.device)[:, 0:4]
-
-        if "depth" in x.keys():
-            depth = x["depth"].to(self.device).reshape(-1, 1, 160, 90)
-        elif "depth" in x["extras"].keys():
-            depth2 = x["extras"]["depth"].detach().clone().unsqueeze(1)
-            depth3 = depth2.detach().clone().float()
-            depth = depth3
-        else:
-            depth = torch.zeros((x0.shape[0], 1, 90, 160)).to(self.device)
-
-        depth = torch.where(torch.isinf(depth), torch.full_like(depth, 100), depth)
-
-        x0 = x0[:, 0:4]
-        x1 = self.encoder(depth)
-
-        x = torch.cat([x0, x1], dim=1)
-        for layer in self.mlp:
-            x = layer(x)
-
-        return x
+        
+        return self.value_head(x)
 
 class q_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
+    def __init__(self, 
+                 device="cuda:0" if torch.cuda.is_available() else "cpu", 
+                 proprioception_channels=3, 
+                 encoder_channels=60, 
+                 image_channels=1,
+                 action_dim=2,
+                 mlp_features=[256, 160, 128],
+                 image_input_dim=[224, 224],
+                 image_encoder_features=[8, 16, 32, 64],
+                 image_fc_features=[120, 60],
+                 activation="leaky_relu",
+                 dropout_rate=0,
+                 use_batch_norm=False):
         super(q_image, self).__init__()
         self.device = device
         self.proprioception_channels = proprioception_channels
         self.encoder_channels = encoder_channels
+        self.action_dim = action_dim
 
-        self.encoder = conv_encoder(in_channels=image_channels)
+        self.encoder = conv_encoder(in_channels=image_channels, input_dim=image_input_dim, encoder_features=image_encoder_features, fc_features=image_fc_features, encoder_activation=activation)
 
         self.mlp = nn.ModuleList()
-
-        in_channels = self.proprioception_channels + self.encoder_channels
-        # action_space = action_space.shape[0]
-        mlp_features = [256, 160, 128]
+        # Include action dimensions in input
+        in_channels = self.proprioception_channels + self.encoder_channels + self.action_dim
+        
         for feature in mlp_features:
             self.mlp.append(nn.Linear(in_channels, feature))
-            self.mlp.append(nn.LeakyReLU())
+            if use_batch_norm:
+                self.mlp.append(nn.BatchNorm1d(feature))
+            self.mlp.append(get_activation(activation))
+            if dropout_rate > 0:
+                self.mlp.append(nn.Dropout(dropout_rate))
             in_channels = feature
 
-        self.mlp.append(nn.Linear(in_channels, 1))
+        self.q_head = nn.Linear(in_channels, 1)
+        
+        # Initialize weights
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize network weights using Xavier initialization"""
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, state: Dict[str, torch.Tensor], action: torch.Tensor):
+        # Encode image
+        x_img = self.encoder(state["image"])
+        
+        # Handle sequential vs batch data
+        is_sequence = x_img.ndim == 3
+        proprioceptive = state["proprioceptive"]
 
-        x = self.encoder(state["image"])
-        is_sequence = x.ndim == 3
         if is_sequence:
-            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=2)
+            # For sequential data: (batch, seq_len, features)
+            x = torch.cat([
+                proprioceptive[..., :self.proprioception_channels], 
+                x_img, 
+                action
+            ], dim=2)
         else:
-            x = torch.cat([state["proprioceptive"][..., 2:5], x], dim=1)
-        #x = torch.cat([state["proprioceptive"], x], dim=1)
+            # For batch data: (batch, features)
+            x = torch.cat([
+                proprioceptive[..., :self.proprioception_channels], 
+                x_img, 
+                action
+            ], dim=1)
+        
+        # Pass through MLP
         for layer in self.mlp:
             x = layer(x)
-
-        return x
+        
+        return self.q_head(x)
 
 
 class TwinQ_image(nn.Module):
-    def __init__(self, device="cuda:0" if torch.cuda.is_available() else "cpu", proprioception_channels=3, encoder_channels=60, image_channels=1):
+    def __init__(self, 
+                 device="cuda:0" if torch.cuda.is_available() else "cpu", 
+                 proprioception_channels=3, 
+                 encoder_channels=60, 
+                 image_channels=1,
+                 action_dim=2,
+                 **kwargs):
         super(TwinQ_image, self).__init__()
         self.device = device
-        self.q1 = q_image(proprioception_channels=proprioception_channels, encoder_channels=encoder_channels, image_channels=image_channels).to(device)
-        self.q2 = q_image(proprioception_channels=proprioception_channels, encoder_channels=encoder_channels, image_channels=image_channels).to(device)
+        
+        # Create two Q-networks with shared parameters for architecture
+        q_kwargs = {
+            'device': device,
+            'proprioception_channels': proprioception_channels,
+            'encoder_channels': encoder_channels,
+            'image_channels': image_channels,
+            'action_dim': action_dim,
+            **kwargs
+        }
+        
+        self.q1 = q_image(**q_kwargs).to(device)
+        self.q2 = q_image(**q_kwargs).to(device)
 
     def forward(self, state: Dict[str, torch.Tensor], action: torch.Tensor):
         q1 = self.q1(state, action)
         q2 = self.q2(state, action)
         return q1, q2
+    
+    def q1_forward(self, state: Dict[str, torch.Tensor], action: torch.Tensor):
+        """Forward pass through Q1 only (useful for policy updates)"""
+        return self.q1(state, action)
 
 
 class MlpPolicy(nn.Module):

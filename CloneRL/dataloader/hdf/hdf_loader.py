@@ -478,13 +478,14 @@ class HDF5DictDatasetRandom(Dataset):
     """HDF5 dataset that returns random timesteps from random episodes to reduce overfitting.
     Each __getitem__ call returns a single timestep from a randomly selected episode."""
 
-    def __init__(self, file_path: str, min_idx=0, max_idx=None, total_samples=120000):
+    def __init__(self, file_path: str, min_idx=0, max_idx=None, total_samples=120000, proprioceptive_keys: List[str] = ['angle_diff', 'distance', 'heading']):
         self.file_path = file_path
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.episodic = False  # This dataset returns individual timesteps, not episodes
         self.min_idx = min_idx
         self.max_idx = max_idx
         self.total_samples = total_samples  # Virtual dataset size
+        self.proprioceptive_keys = proprioceptive_keys
 
         with h5py.File(self.file_path, 'r') as file:
             if 'data' not in file:
@@ -526,6 +527,7 @@ class HDF5DictDatasetRandom(Dataset):
         # depth[:, 50:90, 30:130] = 0.0
         # want to mask out bottom 24 pixels e.g. from 200
         depth[:, 200:] = 0.0
+        rgb[:, 200:] = 0.0
         # rgb[:, 50:90, 30:130] = 0.0
         
         # Convert to grayscale
@@ -533,13 +535,13 @@ class HDF5DictDatasetRandom(Dataset):
         grayscale = grayscale / 255
         grayscale = grayscale.unsqueeze(0)
         
-        #image = torch.cat([depth, grayscale], dim=0)
+        image = torch.cat([depth, grayscale], dim=0)
         # without grayscale
-        image = depth
+        #image = depth
         # Process proprioceptive data
-        proprioceptive_keys = ['actions', 'distance', 'heading', 'angle_diff']
+        #proprioceptive_keys = ['actions', 'distance', 'heading', 'angle_diff']
         proprio_tensors = [torch.from_numpy(np.atleast_1d(obs_group[key][timestep])).to(self.device).float() 
-                          for key in proprioceptive_keys]
+                          for key in self.proprioceptive_keys]
         proprioceptive = torch.cat(proprio_tensors, dim=0)
 
         obs_dict = {
