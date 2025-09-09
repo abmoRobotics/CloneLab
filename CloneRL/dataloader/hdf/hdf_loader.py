@@ -37,16 +37,14 @@ class HDF5Dataset(Dataset):
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.weights = self._calculate_weights()
         if self.max_idx is None:
-            self.max_idx = len(self.file[self.mapper["observations"]])
+            with h5py.File(self.file_path, 'r') as file:
+                self.max_idx = len(file[self.mapper["observations"]])
 
     def __len__(self):
         return self.max_idx - self.min_idx
 
     def __getitem__(self, idx):
         raise NotImplementedError
-
-    def close(self):
-        self.file.close()
 
     def _calculate_weights(self):
         with h5py.File(self.file_path, 'r') as file:
