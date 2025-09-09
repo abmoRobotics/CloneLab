@@ -268,3 +268,5 @@ wandb
 data
 example*
 *.hdf5
+
+datasets
