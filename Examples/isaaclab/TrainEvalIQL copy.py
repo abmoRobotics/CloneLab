@@ -168,127 +168,127 @@ def load_isaaclab_env(
 
     return env
 
-def train_iql():
+def setup_datasets(data_cfg: Dict):
+    """Sets up the training and validation datasets."""
+    print("Setting up datasets...")
+    # Define what data to use, typically "observations" and "actions"
+    # This is defined in the config, but we can leave this here for context
+    HDF_DEFAULT_ORL_MAPPER = data_cfg["mapper"]
 
-    # Define path to HDF5 file and mapper for training and validation
-    # data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset1/with_rgb_and_depth_2.hdf5"
-    # data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset4_180_320/with_rgb_and_depth_0.hdf5"
-    #data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset3/with_rgb_and_depth_0.hdf5"
-    #data = "/home/robotlab/Documents/datasets/dataset_new2_combined.hdf5" # OLD ONE HERE
-    #data2 = "/home/robotlab/Documents/datasets/combined_dataset_last_episodes.hdf5" # OLD ONE HERE
-    #data = "/home/robotlab/ws/RLRoverLab/datasets/dataset_old_camera_pos.hdf5"
-    #data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
-   # data2 = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
-    data = "/media/anton/T7 Shield/University/PHD/rover_simulation_datasets/dataset_new2.hdf5"
+    dataset = HDF5DictDatasetRandom(data_cfg["path"], 
+                                    min_idx=data_cfg["train_min_idx"], 
+                                    total_samples=data_cfg["train_total_samples"])
+    dataset_val = HDF5DictDatasetRandom(data_cfg["path"], 
+                                        min_idx=data_cfg["val_min_idx"], 
+                                        max_idx=data_cfg["val_max_idx"], 
+                                        total_samples=data_cfg["val_total_samples"])
+    print("Datasets ready.")
+    return dataset, dataset_val
 
-    # Define what data to use typically "observations" and "actions", but for t his example we train on depth aswell
-    # HDF_DEFAULT_ORL_MAPPER = {
-    #     "observations": "observations",
-    #     "actions": "actions",
-    #     "depth": "depth"
-    # }
-    HDF_DEFAULT_ORL_MAPPER = {
-        "observations": "observations",
-        "actions": "actions",
-        "rewards": "rewards",
-        "next_observation": "observations",
-        "dones": "terminated",
-        "depth": "depth",
-        "rgb": "rgb"
-    }
+def setup_models_and_agent(model_cfg: Dict, agent_cfg: Dict):
+    """Initializes the models and the IQL agent."""
+    print("Initializing models and agent...")
+    device = model_cfg.get("device", "cuda:0")
+    actor = actor_gaussian_image(proprioception_channels=model_cfg["proprioception_channels"], 
+                                 image_channels=model_cfg["image_channels"]).to(device)
+    critic = TwinQ_image(proprioception_channels=model_cfg["proprioception_channels"], 
+                         image_channels=model_cfg["image_channels"]).to(device)
+    value = v_image(proprioception_channels=model_cfg["proprioception_channels"], 
+                    image_channels=model_cfg["image_channels"]).to(device)
 
-    # Define the dataset and validation dataset, we use the same dataset for both here
-    dataset = HDF5DictDatasetRandom(data, min_idx=100, total_samples=120000)
-    dataset_val = HDF5DictDatasetRandom(
-        data, min_idx=1, max_idx=100, total_samples=10000)
-
-    # Define model configurations
-    model_config = {
-        "proprioception_channels": 3,
-        "image_channels": 2,
-        "action_dim": 2,
-        "mlp_features": [256, 160, 128],
-        "image_input_dim": [224, 224],
-        "image_encoder_features": [8, 16, 32, 64],
-        "image_fc_features": [120, 60],
-        "activation": "leaky_relu",
-        "dropout_rate": 0,
-        "use_batch_norm": False
-    }
-    
-    iql_config = {
-        "actions_lr": 1e-3,
-        "value_lr": 3e-4,
-        "critic_lr": 3e-4,
-        "discount": 0.99,
-        "tau": 0.005,
-        "expectile": 0.8,
-        "temperature": 0.1,
-        "target_update_freq": 1,
-    }
-
-    # Define model with improved configurations
-    actor = actor_gaussian_image(**model_config).to("cuda:0")
-    critic = TwinQ_image(**model_config).to("cuda:0")
-    value = v_image(**model_config).to("cuda:0")
-
-    # Choose the algorithm to train with
     agent = IQL(actor_policy=actor,
                 value_policy=value,
                 critic_policy=critic,
-                cfg=iql_config)
+                cfg=agent_cfg)
+    print("Models and agent ready.")
+    return agent
 
-    #def env_loader(): return wrap_env(load_isaac_orbit_env(task_name="AAURoverEnvCamera-v0"), wrapper="isaac-orbit")
+def train_iql(cfg: Dict):
+    """
+    Trains the IQL agent based on the provided configuration.
 
-    # Define the trainer with improved configuration
-    trainer_config = {
-        "batch_size": 128,  # Reduced from 100 for more stable gradients
-        "epochs": 3,      # Increased for better convergence
-        "num_workers": 4,
-        "shuffle": True,
-        "early_stopping_patience": 10,
-        "save_freq": 2,
-        "validation_freq": 1,
-        "log_freq": 50,
-        "mixed_precision": True,
-    }
-    
-    trainer = Trainer(cfg=trainer_config,
+    :param cfg: The configuration dictionary.
+    :return: The trained trainer instance.
+    """
+    # Define the dataset and validation dataset
+    dataset, dataset_val = setup_datasets(cfg["data"])
+
+    # Define model and agent
+    agent = setup_models_and_agent(cfg["model"], cfg.get("agent", {}))
+
+    # Define the trainer
+    trainer = Trainer(cfg=cfg["trainer"],
                       policy=agent,
                       dataset=dataset, 
                       val_dataset=dataset_val)
 
     # Start training
+    print("Starting training...")
     trainer.train()
+    print("Training finished.")
 
     return trainer
 
 
-def eval(trainer: Trainer):
-    # AppLauncher.add_app_launcher_args(parser)
-    # args_cli, hydra_args = parser.parse_known_args()
-    # sys.argv = [sys.argv[0]] + hydra_args
-    # app_launcher = AppLauncher(args_cli)
-    # simulation_app = app_launcher.app
-    # from isaaclab_tasks.utils import parse_env_cfg  # noqa: F401, E402
-    # import rover_envs  # noqa: F401
-    # import rover_envs.envs.navigation.robots  # noqa: F401
-    # env_cfg = parse_env_cfg(
-    #     args_cli.task, device="cuda:0" if not args_cli.cpu else "cpu", num_envs=args_cli.num_envs
-    # )
-    # env = gym.make(args_cli.task, cfg=env_cfg)
-    # env.reset()
-    # #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
-    # #env = wrap_env(env, wrapper="isaaclab")
-    # trainer.evaluate(env, num_steps=10000)
-    #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
-    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
-    #env = wrap_env(env)
-    trainer.evaluate(env, num_steps=1000000)
+def eval(trainer: Trainer, eval_cfg: Dict):
+    """
+    Evaluates the trained agent.
+
+    :param trainer: The trainer instance with the trained policy.
+    :param eval_cfg: The evaluation configuration dictionary.
+    """
+    print("Starting evaluation...")
+    env = load_isaaclab_env(task_name=eval_cfg["task_name"])
+    trainer.evaluate(env, num_steps=eval_cfg["num_steps"])
+    print("Evaluation finished.")
+
+
+def main():
+    """Main function to run training and evaluation."""
+    # Centralized configuration
+    config = {
+        "data": {
+            "path": "/home/robotlab/Documents/datasets/dataset_new2.hdf5",
+            "mapper": {
+                "observations": "observations",
+                "actions": "actions",
+                "rewards": "rewards",
+                "next_observation": "observations",
+                "dones": "terminated",
+                "depth": "depth",
+                "rgb": "rgb"
+            },
+            "train_min_idx": 100,
+            "train_total_samples": 120000,
+            "val_min_idx": 1,
+            "val_max_idx": 100,
+            "val_total_samples": 10000,
+        },
+        "model": {
+            "proprioception_channels": 3,
+            "image_channels": 1,
+            "device": "cuda:0",
+        },
+        "agent": {},
+        "trainer": {
+            "batch_size": 100,
+            "epochs": 10,
+            "num_workers": 4,
+            "shuffle": True,
+        },
+        "eval": {
+            "task_name": "AAURoverEnvRGBDRawTemp-v0",
+            "num_steps": 1000000,
+        }
+    }
+    # In a more advanced setup, you could load this config from a file
+    # or override it with command-line arguments.
+
+    trainer = train_iql(config)
+    eval(trainer, config["eval"])
 
 
 if __name__ == "__main__":
     import multiprocessing as mp
     mp.set_start_method('spawn', force=True)
-    trainer = train_iql()
-    eval(trainer)
+    main()

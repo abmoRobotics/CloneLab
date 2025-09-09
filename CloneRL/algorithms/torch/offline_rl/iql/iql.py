@@ -26,11 +26,13 @@ class IQL(BaseAgent):
                  critic_lr: float = 3e-4,
                  discount: float = 0.99,
                  tau: float = 0.005,
-                 expectile: float = 0.8, # original 0.8
-                 temperature: float = 0.1, # original 0.1
+                 expectile: float = 0.8,
+                 temperature: float = 0.1,
                  dropout_rate: Optional[float] = None,
                  max_steps: Optional[int] = None,
-                 opt_decay_schedule: Optional[str] = None):
+                 #opt_decay_schedule: Optional[str] = None, # TODO: Implement different schedules
+                 #grad_clip: Optional[float] = 1.0, # TODO: ADD grad clip option
+                 target_update_freq: int = 1):
         super().__init__(cfg, actor_policy, device=device)
 
         # Define the actor, critic and value networks
@@ -39,19 +41,29 @@ class IQL(BaseAgent):
 
         self.critic = critic_policy.to(self.device)
         self.critic_target = copy.deepcopy(self.critic)
+        # Freeze target network
+        for param in self.critic_target.parameters():
+            param.requires_grad = False
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=critic_lr)
 
         self.value = value_policy.to(self.device)
         self.value_optimizer = optim.Adam(self.value.parameters(), lr=value_lr)
 
+        # Algorithm parameters
         self.discount = discount
         self.tau = tau
         self.temperature = temperature
-
-        self.total_steps = 0
         self.expectile = expectile
+        #self.grad_clip = grad_clip # TODO: Add option to disable
+        self.target_update_freq = target_update_freq
+        
+        # Training state
+        self.total_steps = 0
+        self.update_count = 0
 
+        # Loss function and scaler
         self.loss_fn = nn.MSELoss()
+        self.huber_loss = nn.SmoothL1Loss() # TODO: Implement choice between MSE and Huber
         self.scaler = torch.amp.GradScaler()
 
         self.initialize()
@@ -66,21 +78,32 @@ class IQL(BaseAgent):
         # return self.actor.get_action(state, deterministic)
 
     def train(self, state, action, reward, next_state, done, weights, step, masks):
-        def update_value_network(self: IQL, states, actions, logger=None):
+        """Improved training step with better optimization and logging"""
+        
+        def update_value_network(self: IQL, states, actions):
+            """Update value network with expectile regression"""
             with torch.no_grad():
                 q1, q2 = self.critic_target(states, actions)
                 q = torch.min(q1, q2)
 
             value = self.value(states)
-            value_loss: torch.Tensor = self.expectile_loss(q - value, self.expectile).mean()
+            value_loss = self.expectile_loss(q - value, self.expectile)
 
             self.value_optimizer.zero_grad()
             value_loss.backward()
             self.value_optimizer.step()
-            wandb.log({"train/value_loss": value_loss.mean().item()}, step=step)
-            wandb.log({"train/value": value.mean().item()}, step=step)
+            
+            # Logging
+            wandb.log({
+                "train/value_loss": value_loss.item(),
+                "train/value_mean": value.mean().item(),
+                "train/q_target_mean": q.mean().item(),
+            }, step=step)
+            
+            return value_loss.item()
 
-        def update_q_network(self: IQL, states, actions, rewards, next_states, dones, logger=None):
+        def update_q_network(self: IQL, states, actions, rewards, next_states, dones):
+            """Update Q-networks with target network"""
             with torch.no_grad():
                 next_value = self.value(next_states).squeeze(-1)
                 target_q = rewards + self.discount * (1 - dones.float()) * next_value
@@ -92,57 +115,68 @@ class IQL(BaseAgent):
             critic_loss.backward()
             self.critic_optimizer.step()
 
-            wandb.log({"train/critic_loss": critic_loss.mean().item()}, step=step)
-            wandb.log({"train/q1": q1.mean().item()}, step=step)
-            wandb.log({"train/q2": q2.mean().item()}, step=step)
+            # Logging
+            wandb.log({
+                "train/critic_loss": critic_loss.item(),
+                "train/q1_mean": q1.mean().item(),
+                "train/q2_mean": q2.mean().item(),
+                "train/target_q_mean": target_q.mean().item(),
+            }, step=step)
+            
+            return critic_loss.item()
 
-        def update_actor_network(self: IQL, states, actions, logger=None):
+        def update_actor_network(self: IQL, states, actions):
+            """Update actor network with AWR-style weighting"""
             with torch.no_grad():
                 value = self.value(states)
                 q1, q2 = self.critic(states, actions)
                 q = torch.min(q1, q2)
-                exp_a = torch.exp((q - value) * self.temperature)
-                exp_a = torch.clamp(exp_a, max=100)
+                
+                # Compute advantage and weights
+                advantage = q - value
+                exp_weights = torch.exp(advantage * self.temperature)
+                exp_weights = torch.clamp(exp_weights, max=100.0)
 
-            dist: torch.distributions.Normal = self.actor(states)
-            log_probs = -dist.log_prob(actions).sum(dim=-1, keepdim=True)  # Sum over action dimensions
-            # actor_loss = -(exp_a.unsqueeze(-1) * log_probs).mean()
-            actor_loss = torch.mean(exp_a * log_probs)
-            # mu = self.actor(states)
-            # actor_loss = (exp_a.unsqueeze(-1) * (mu - actions) ** 2).mean()
+            # Get log probabilities from actor
+            dist = self.actor(states)
+            log_probs = dist.log_prob(actions).sum(dim=-1, keepdim=True)
+            
+            # AWR loss: maximize log probability weighted by advantage
+            actor_loss = -(exp_weights * log_probs).mean()
 
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()
 
-            wandb.log({"train/actor_loss": actor_loss.mean().item()}, step=step)
-            wandb.log({"train/advantage": (q - value).mean().item()}, step=step)
-            return actor_loss
+            # Logging
+            wandb.log({
+                "train/actor_loss": actor_loss.item(),
+                "train/advantage_mean": advantage.mean().item(),
+                "train/advantage_std": advantage.std().item(),
+                "train/exp_weights_mean": exp_weights.mean().item(),
+                "train/log_probs_mean": log_probs.mean().item(),
+            }, step=step)
+            
+            return actor_loss.item()
 
-        def update_target_network(self: IQL, logger=None):
+        def update_target_network(self: IQL):
+            """Soft update of target network"""
             for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
                 target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-        # Sample a batch of data
-        # state, action, reward, next_state, done = data['observations'], data['actions'], data['rewards'], data['next_observation'], data['dones']
-        # state = {"observations": state,
-        #          "depth": data['depth']}
-
-        # Update the value network
-        # state["image"] = state["image"].unsqueeze(1)
-
-        update_value_network(self, state, action)
-
-        # Update the actor network
+        # Main training step
+        self.update_count += 1
+        
+        # Update networks
+        value_loss = update_value_network(self, state, action)
         actor_loss = update_actor_network(self, state, action)
+        critic_loss = update_q_network(self, state, action, reward, next_state, done)
 
-        # Update the Q network
-        update_q_network(self, state, action, reward, next_state, done)
+        # Update target network
+        if self.update_count % self.target_update_freq == 0:
+            update_target_network(self)
 
-        # Update the target network
-        update_target_network(self)
-
-        return actor_loss.item()
+        return actor_loss
 
     def validate(self, state, action, reward, next_state, done, weights, step, masks) -> torch.Tensor:
         average_loss = 0

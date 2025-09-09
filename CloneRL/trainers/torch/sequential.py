@@ -1,5 +1,6 @@
 import copy
 import threading
+import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 import torch.nn.functional as F
 import torch
@@ -22,6 +23,11 @@ SEQUENTIAL_TRAINER_DEFAULT_CONFIG = {
     "shuffle": False,
     "epochs": 10,
     "simulator": None,
+    "early_stopping_patience": 10,
+    "save_freq": 2,
+    "validation_freq": 1,
+    "log_freq": 100,
+    "mixed_precision": True,
 }
 
 
@@ -91,75 +97,167 @@ class SequentialTrainer(BaseTrainer):
         Args:
         num_epochs (int): The number of epochs to train and validate the model.
         """
-        best_val_loss = float('inf')  # Initialize the best validation loss to infinity
+        best_val_loss = float('inf')
+        patience_counter = 0
+        train_losses = []
+        val_losses = []
+        
         print("Starting training...")
         print(f"Training for {self.cfg['epochs']} epochs with batch size {self.cfg['batch_size']}...")
+        
+        # Setup mixed precision training
+        scaler = torch.amp.GradScaler() if self.cfg.get('mixed_precision', True) else None
+        
         for current_epoch in range(self.cfg["epochs"]):
+            epoch_start_time = time.time()
+            
             # Training phase
-            train_loss = self._process_epoch(self.train_ds, current_epoch, train=True)
+            train_loss = self._process_epoch(self.train_ds, current_epoch, train=True, scaler=scaler)
+            train_losses.append(train_loss)
+            
             # Validation phase
-            val_loss = self._process_epoch(self.train_val_ds, current_epoch, train=False)
-            wandb.log({"epoch/validation_loss": val_loss}, step=(current_epoch+1)*len(self.train_ds))
-            wandb.log({"epoch/train_loss": train_loss}, step=(current_epoch+1)*len(self.train_ds))
-            wandb.log({"epoch": current_epoch}, step=(current_epoch+1)*len(self.train_ds))
-            # Save the model if validation loss improves
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                self.policy.save_model(f"best_model_{current_epoch}.pt")
-                print(f"Model saved with improved validation loss: {best_val_loss}")
+            if current_epoch % self.cfg.get('validation_freq', 1) == 0:
+                val_loss = self._process_epoch(self.train_val_ds, current_epoch, train=False, scaler=None)
+                val_losses.append(val_loss)
+                
+                # Log epoch metrics
+                epoch_time = time.time() - epoch_start_time
+                wandb.log({
+                    "epoch/validation_loss": val_loss,
+                    "epoch/train_loss": train_loss,
+                    "epoch/epoch": current_epoch,
+                    "epoch/epoch_time": epoch_time,
+                    "epoch/learning_rate": self.policy.actor_optimizer.param_groups[0]['lr'] if hasattr(self.policy, 'actor_optimizer') else 0,
+                }, step=(current_epoch+1)*len(self.train_ds))
+                
+                # Early stopping and model saving
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    patience_counter = 0
+                    self.policy.save_model(f"best_model_epoch_{current_epoch}.pt")
+                    print(f"✓ Model saved with improved validation loss: {best_val_loss:.6f}")
+                else:
+                    patience_counter += 1
+                    
+                # Early stopping check
+                if patience_counter >= self.cfg.get('early_stopping_patience', float('inf')):
+                    print(f"Early stopping triggered after {patience_counter} epochs without improvement")
+                    break
+                    
+            # Regular checkpointing
+            if current_epoch % self.cfg.get('save_freq', 5) == 0:
+                self.policy.save_model(f"checkpoint_epoch_{current_epoch}.pt")
+                
+            # Progress reporting
+            print(f"Epoch {current_epoch:3d}/{self.cfg['epochs']:3d} | "
+                  f"Train Loss: {train_loss:.6f} | "
+                  f"Val Loss: {val_loss:.6f} | "
+                  f"Best Val: {best_val_loss:.6f} | "
+                  f"Patience: {patience_counter}/{self.cfg.get('early_stopping_patience', 'inf')}")
+        
+        # Save final model
+        self.policy.save_model("final_model.pt")
+        print(f"Training completed! Best validation loss: {best_val_loss:.6f}")
+        
+        return {
+            'best_val_loss': best_val_loss,
+            'train_losses': train_losses,
+            'val_losses': val_losses,
+            'total_epochs': current_epoch + 1
+        }
 
-            # wandb.log({"train/train_loss": train_loss, "val/val_loss": val_loss},
-            #           step=current_epoch * len(self.train_ds))
-
-    def _process_epoch(self, dataset, epoch: int, train: bool):
+    def _process_epoch(self, dataset, epoch: int, train: bool, scaler=None):
         """
-        Processes an epoch of training or validation, computing the loss for each batch.
-
-        Args:
-        dataset (Iterable): The dataset to process.
-        epoch (int): The current epoch number.
-        train (bool): Flag indicating if the model should be trained or validated.
-
-        Returns:
-        float: Average loss for the epoch.
+        Enhanced epoch processing with mixed precision support and better error handling.
         """
         total_loss = 0.0
+        num_batches = 0
         phase = 'Train' if train else 'Val'
         pbar_description = f"{phase} Epoch {epoch}"
         pbar_format = "{l_bar}{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]"
 
+        # Set model to appropriate mode
+        if train:
+            if hasattr(self.policy, 'actor'):
+                self.policy.actor.train()
+            if hasattr(self.policy, 'critic'):
+                self.policy.critic.train()
+            if hasattr(self.policy, 'value'):
+                self.policy.value.train()
+        else:
+            if hasattr(self.policy, 'actor'):
+                self.policy.actor.eval()
+            if hasattr(self.policy, 'critic'):
+                self.policy.critic.eval()
+            if hasattr(self.policy, 'value'):
+                self.policy.value.eval()
+
         with tqdm.tqdm(dataset, desc=pbar_description, bar_format=pbar_format) as pbar:
-            for idx, (obs, actions, rewards, next_obs, dones, weights, masks) in enumerate(pbar):
+            for idx, batch_data in enumerate(pbar):
+                # Unpack batch data
+                obs, actions, rewards, next_obs, dones, weights, masks = batch_data
+                
+                # Move data to device
                 if not isinstance(obs, dict):
                     obs = obs.to(self.policy.device)
                 else:
                     obs = {k: v.to(self.policy.device) for k, v in obs.items()}
+                
                 if not isinstance(next_obs, dict):
                     next_obs = next_obs.to(self.policy.device)
                 else:
                     next_obs = {k: v.to(self.policy.device) for k, v in next_obs.items()}
+                
                 actions = actions.to(self.policy.device)
                 rewards = rewards.to(self.policy.device)
                 dones = dones.to(self.policy.device)
                 weights = weights.to(self.policy.device)
                 masks = masks.to(self.policy.device)
-                # print(actions.shape)
+                
                 step = epoch * len(dataset) + idx
-                if train:
+                
+                # Training or validation step
+                if train and scaler is not None:
+                    # Mixed precision training
+                    with torch.amp.autocast(device_type='cuda' if 'cuda' in str(self.policy.device) else 'cpu'):
+                        loss = self.policy.train(obs, actions, rewards, next_obs, dones, weights, step, masks)
+                elif train:
+                    # Regular precision training
                     loss = self.policy.train(obs, actions, rewards, next_obs, dones, weights, step, masks)
-
                 else:
+                    # Validation
                     with torch.no_grad():
                         loss = self.policy.validate(obs, actions, rewards, next_obs, dones, weights, step, masks)
-                total_loss += loss
+                
+                # Handle loss (could be tensor or float)
+                # if torch.is_tensor(loss):
+                #     loss_val = loss.item()
+                # else:
+                #     loss_val = float(loss)
+                loss_val = loss # TODO: Consider checking type as above
+                total_loss += loss_val
+                num_batches += 1
+                
+                # Update progress bar
                 if (idx + 1) == len(dataset):
-                    average_loss = total_loss / len(dataset)
-                    pbar.set_postfix({f'Avg {phase.lower()} loss': average_loss})
+                    average_loss = total_loss / num_batches if num_batches > 0 else 0.0
+                    pbar.set_postfix({f'Avg {phase.lower()} loss': f"{average_loss:.6f}"})
                 else:
-                    pbar.set_postfix({"Batch loss": loss})
-            # wandb.log({"epoch/train_loss": loss}, step=step)
-            average_loss = total_loss / len(dataset)
-            return average_loss
+                    pbar.set_postfix({"Batch loss": f"{loss_val:.6f}"})
+                
+                # Log batch-level metrics occasionally
+                if train and idx % self.cfg.get('log_freq', 100) == 0:
+                    wandb.log({
+                        f"batch/{phase.lower()}_loss": loss_val,
+                        "batch/step": step,
+                    }, step=step)
+                        
+                # except Exception as e:
+                #     print(f"Error processing batch {idx}: {str(e)}")
+                #     continue
+
+        average_loss = total_loss / num_batches if num_batches > 0 else float('inf')
+        return average_loss
 
     def evaluate(self, env, num_steps=1000):
         obs, info = env.reset()
@@ -199,14 +297,15 @@ class SequentialTrainer(BaseTrainer):
                     #depth_image[:, 50:90, 30:130] = 0.0
                     depth_image[:, 200:] = 0.0
                     rgb = obs["rgb_image"].permute(0,3,1,2)
-                    rgb[:, 50:90,30:130] = 0.0
+                    rgb[:, 200:] = 0.0
+                    #rgb[:, 50:90,30:130] = 0.0
                     grayscale = rgb[:, 0] * 0.2989 + rgb[:, 1] * 0.5870 + rgb[:, 2] * 0.1140
                     grayscale = grayscale / 255
                     grayscale = grayscale.unsqueeze(1)
                     #grayscale.unsqueeze()
                     #image = torch.cat([depth, rgb], dim=1)
-                    #image = torch.cat([depth_image, grayscale], dim=1)
-                    image = depth_image
+                    image = torch.cat([depth_image, grayscale], dim=1)
+                    #image = depth_image
                     #depth_image = F.interpolate(depth_image, size=(90, 160), mode='bilinear', align_corners=False)
                     actions = obs["actions"]
                     distance_obs = obs["distance"]
