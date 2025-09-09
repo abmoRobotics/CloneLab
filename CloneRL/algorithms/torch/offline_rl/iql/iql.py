@@ -26,8 +26,8 @@ class IQL(BaseAgent):
                  critic_lr: float = 3e-4,
                  discount: float = 0.99,
                  tau: float = 0.005,
-                 expectile: float = 0.7, # original 0.8
-                 temperature: float = 3.00, # original 0.1
+                 expectile: float = 0.8, # original 0.8
+                 temperature: float = 0.1, # original 0.1
                  dropout_rate: Optional[float] = None,
                  max_steps: Optional[int] = None,
                  opt_decay_schedule: Optional[str] = None):
