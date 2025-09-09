@@ -14,9 +14,9 @@ def evaluate_model(checkpoint_path, model_name):
     :param checkpoint_path: Path to the directory containing the saved model weights.
     """
     # Define model
-    actor = actor_gaussian_image(proprioception_channels=3, image_channels=2).to("cuda:0")
-    critic = TwinQ_image(proprioception_channels=3, image_channels=2).to("cuda:0")
-    value = v_image(proprioception_channels=3, image_channels=2).to("cuda:0")
+    actor = actor_gaussian_image(proprioception_channels=3, image_channels=1).to("cuda:0")
+    critic = TwinQ_image(proprioception_channels=3, image_channels=1).to("cuda:0")
+    value = v_image(proprioception_channels=3, image_channels=1).to("cuda:0")
 
     # Choose the algorithm
     agent = IQL(actor_policy=actor,
@@ -33,8 +33,8 @@ def evaluate_model(checkpoint_path, model_name):
     trainer = Trainer(cfg={}, policy=agent, dataset=dataset, val_dataset=dataset_val)
 
     # Evaluate the model
-    #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
-    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
+    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
+    #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
     trainer.evaluate(env, num_steps=10000)
 
 
@@ -45,7 +45,9 @@ if __name__ == "__main__":
     # Define the path to the checkpoint
     # Make sure to replace this with the actual path to your checkpoint
     checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-19_17-35-24/checkpoints/"
-    checkpoint_path = "runs/CloneLab-Examples_orbit/2025-08-12_10-12-20/checkpoints/"
+    checkpoint_path = "runs/CloneLab-Examples_orbit/2025-08-12_10-12-20/checkpoints/" # old random
+    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-28_13-34-28/checkpoints/" # New camera position
+    #checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-22_11-23-33/checkpoints/" # old random different hyperparameters
     model_name = "best_model_8.pt"
     model_name = "best_model_9.pt"
 
