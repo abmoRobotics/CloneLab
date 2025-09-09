@@ -525,16 +525,19 @@ class HDF5DictDatasetRandom(Dataset):
         depth = torch.clamp(depth, min=0.0, max=6.0)
 
         # Apply masking
-        depth[:, 50:90, 30:130] = 0.0
-        rgb[:, 50:90, 30:130] = 0.0
+        # depth[:, 50:90, 30:130] = 0.0
+        # want to mask out bottom 24 pixels e.g. from 200
+        depth[:, 200:] = 0.0
+        # rgb[:, 50:90, 30:130] = 0.0
         
         # Convert to grayscale
         grayscale = rgb[0] * 0.2989 + rgb[1] * 0.5870 + rgb[2] * 0.1140
         grayscale = grayscale / 255
         grayscale = grayscale.unsqueeze(0)
         
-        image = torch.cat([depth, grayscale], dim=0)
-
+        #image = torch.cat([depth, grayscale], dim=0)
+        # without grayscale
+        image = depth
         # Process proprioceptive data
         proprioceptive_keys = ['actions', 'distance', 'heading', 'angle_diff']
         proprio_tensors = [torch.from_numpy(np.atleast_1d(obs_group[key][timestep])).to(self.device).float() 
