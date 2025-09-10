@@ -177,9 +177,9 @@ def train_iql():
     #data = "/home/robotlab/Documents/datasets/dataset_new2_combined.hdf5" # OLD ONE HERE
     #data2 = "/home/robotlab/Documents/datasets/combined_dataset_last_episodes.hdf5" # OLD ONE HERE
     #data = "/home/robotlab/ws/RLRoverLab/datasets/dataset_old_camera_pos.hdf5"
-    #data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
+    data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
    # data2 = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
-    data = "/media/anton/T7 Shield/University/PHD/rover_simulation_datasets/dataset_new2.hdf5"
+    #data = "/media/anton/T7 Shield/University/PHD/rover_simulation_datasets/dataset_new2.hdf5"
 
     # Define what data to use typically "observations" and "actions", but for t his example we train on depth aswell
     # HDF_DEFAULT_ORL_MAPPER = {
@@ -243,7 +243,7 @@ def train_iql():
     # Define the trainer with improved configuration
     trainer_config = {
         "batch_size": 128,  # Reduced from 100 for more stable gradients
-        "epochs": 3,      # Increased for better convergence
+        "epochs": 10,      # Increased for better convergence
         "num_workers": 4,
         "shuffle": True,
         "early_stopping_patience": 10,
