@@ -13,10 +13,24 @@ def evaluate_model(checkpoint_path, model_name):
 
     :param checkpoint_path: Path to the directory containing the saved model weights.
     """
+
+    model_config = {
+        "proprioception_channels": 3,
+        "image_channels": 2,
+        "action_dim": 2,
+        "mlp_features": [512, 256, 128,64],
+        "image_input_dim": [224, 224],
+        "image_encoder_features": [8, 16, 32, 64],
+        "image_fc_features": [120, 60],
+        "activation": "leaky_relu",
+        "dropout_rate": 0,
+        "use_batch_norm": False
+    }
+
     # Define model
-    actor = actor_gaussian_image(proprioception_channels=3, image_channels=1).to("cuda:0")
-    critic = TwinQ_image(proprioception_channels=3, image_channels=1).to("cuda:0")
-    value = v_image(proprioception_channels=3, image_channels=1).to("cuda:0")
+    actor = actor_gaussian_image(**model_config).to("cuda:0")
+    critic = TwinQ_image(**model_config).to("cuda:0")
+    value = v_image(**model_config).to("cuda:0")
 
     # Choose the algorithm
     agent = IQL(actor_policy=actor,
@@ -46,10 +60,11 @@ if __name__ == "__main__":
     # Make sure to replace this with the actual path to your checkpoint
     checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-19_17-35-24/checkpoints/"
     checkpoint_path = "runs/CloneLab-Examples_orbit/2025-08-12_10-12-20/checkpoints/" # old random
-    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-28_13-34-28/checkpoints/" # New camera position
+    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-09-09_08-37-37/checkpoints/" # New camera position
     #checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-22_11-23-33/checkpoints/" # old random different hyperparameters
     model_name = "best_model_8.pt"
     model_name = "best_model_9.pt"
+    model_name = "best_model_epoch_9.pt"
 
     # Run the evaluation
     evaluate_model(checkpoint_path, model_name=model_name)
