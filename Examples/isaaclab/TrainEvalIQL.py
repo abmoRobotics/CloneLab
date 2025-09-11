@@ -8,7 +8,7 @@ import argparse
 import sys
 import isaaclab
 #from isaaclab.app import AppLauncher
-from models import TwinQ_image, actor_gaussian, actor_gaussian_image, v_image
+from models import TwinQ_image, actor_gaussian_image, v_image
 # from skrl.utils import set_seed
 from CloneRL.utils import set_seed
 #from skrl.envs.loaders.torch import load_isaaclab_env
@@ -198,7 +198,7 @@ def train_iql():
     }
 
     # Define the dataset and validation dataset, we use the same dataset for both here
-    dataset = HDF5DictDatasetRandom(data, min_idx=100, total_samples=120000)
+    dataset = HDF5DictDatasetRandom(data, min_idx=10000, total_samples=120000)
     dataset_val = HDF5DictDatasetRandom(
         data, min_idx=1, max_idx=100, total_samples=10000)
 
@@ -207,7 +207,7 @@ def train_iql():
         "proprioception_channels": 3,
         "image_channels": 2,
         "action_dim": 2,
-        "mlp_features": [256, 160, 128],
+        "mlp_features": [512, 256, 128, 64],
         "image_input_dim": [224, 224],
         "image_encoder_features": [8, 16, 32, 64],
         "image_fc_features": [120, 60],
@@ -242,7 +242,7 @@ def train_iql():
 
     # Define the trainer with improved configuration
     trainer_config = {
-        "batch_size": 128,  # Reduced from 100 for more stable gradients
+        "batch_size": 100,  # Reduced from 100 for more stable gradients
         "epochs": 10,      # Increased for better convergence
         "num_workers": 4,
         "shuffle": True,
@@ -250,7 +250,7 @@ def train_iql():
         "save_freq": 2,
         "validation_freq": 1,
         "log_freq": 50,
-        "mixed_precision": True,
+        "mixed_precision": False,
     }
     
     trainer = Trainer(cfg=trainer_config,
@@ -281,14 +281,15 @@ def eval(trainer: Trainer):
     # #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
     # #env = wrap_env(env, wrapper="isaaclab")
     # trainer.evaluate(env, num_steps=10000)
-    #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
-    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
+    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
+    #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
     #env = wrap_env(env)
-    trainer.evaluate(env, num_steps=1000000)
+    trainer.evaluate(env, num_steps=10000)
 
 
 if __name__ == "__main__":
     import multiprocessing as mp
     mp.set_start_method('spawn', force=True)
     trainer = train_iql()
+    print(trainer)
     eval(trainer)
