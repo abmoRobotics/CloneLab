@@ -312,7 +312,7 @@ class SequentialTrainer(BaseTrainer):
                     heading_obs = obs["heading"]
                     angle_diff_obs = obs["angle_diff"]
                     #proprioceptive_obs = torch.cat((distance_obs, heading_obs, angle_diff_obs), dim=1)
-                    proprioceptive_obs = torch.cat((actions, distance_obs, heading_obs, angle_diff_obs), dim=1)
+                    proprioceptive_obs = torch.cat((angle_diff_obs, distance_obs, heading_obs), dim=1)
                     state = {
                         'proprioceptive': proprioceptive_obs,
                         'image': image#depth_image
