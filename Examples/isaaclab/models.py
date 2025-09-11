@@ -371,7 +371,7 @@ class actor_gaussian(nn.Module):
 
 
 class conv_encoder(nn.Module):
-    def __init__(self, in_channels, input_dim=[224, 224], encoder_features=[8, 16, 32, 64], fc_features=[120, 60], encoder_activation="leaky_relu"):
+    def __init__(self, in_channels, input_dim=[160, 90], encoder_features=[8, 16, 32, 64], fc_features=[120, 60], encoder_activation="leaky_relu"):
         super().__init__()
         padding = 1
         stride = 1

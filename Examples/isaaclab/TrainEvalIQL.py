@@ -176,9 +176,9 @@ def train_iql():
     #data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset3/with_rgb_and_depth_0.hdf5"
     #data = "/home/robotlab/Documents/datasets/dataset_new2_combined.hdf5" # OLD ONE HERE
     #data2 = "/home/robotlab/Documents/datasets/combined_dataset_last_episodes.hdf5" # OLD ONE HERE
-    #data = "/home/robotlab/ws/RLRoverLab/datasets/dataset_old_camera_pos.hdf5"
-    data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
-    data2 = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
+    data = "/home/robotlab/ws/RLRoverLab/datasets/dataset_old_camera_pos.hdf5"
+    #data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
+    #data2 = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
 
     # Define what data to use typically "observations" and "actions", but for t his example we train on depth aswell
     # HDF_DEFAULT_ORL_MAPPER = {
@@ -202,9 +202,9 @@ def train_iql():
         data, min_idx=1, max_idx=100, total_samples=10000)
 
     # Define model
-    actor = actor_gaussian_image(proprioception_channels=3, image_channels=1).to("cuda:0")
-    critic = TwinQ_image(proprioception_channels=3, image_channels=1).to("cuda:0")
-    value = v_image(proprioception_channels=3, image_channels=1).to("cuda:0")
+    actor = actor_gaussian_image(proprioception_channels=3, image_channels=2).to("cuda:0")
+    critic = TwinQ_image(proprioception_channels=3, image_channels=2).to("cuda:0")
+    value = v_image(proprioception_channels=3, image_channels=2).to("cuda:0")
 
     # Choose the algorithm to train with
     agent = IQL(actor_policy=actor,
@@ -215,7 +215,7 @@ def train_iql():
     #def env_loader(): return wrap_env(load_isaac_orbit_env(task_name="AAURoverEnvCamera-v0"), wrapper="isaac-orbit")
 
     # Define the trainer
-    trainer = Trainer(cfg={"batch_size": 100, "epochs": 10, "num_workers": 4, "shuffle": True},
+    trainer = Trainer(cfg={"batch_size": 100, "epochs": 10, "num_workers": 24, "shuffle": True},
                       policy=agent,
                       dataset=dataset, 
                       val_dataset=dataset_val)
@@ -246,7 +246,7 @@ def eval(trainer: Trainer):
     #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
     env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
     #env = wrap_env(env)
-    trainer.evaluate(env, num_steps=1000000)
+    trainer.evaluate(env, num_steps=5000)
 
 
 if __name__ == "__main__":
