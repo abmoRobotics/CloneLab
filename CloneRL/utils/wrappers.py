@@ -40,11 +40,12 @@ class SuccessTrackerWrapper(gym.Wrapper):
         if done.any():
             finished_mask_cpu = done
             num_finished = int(finished_mask_cpu.sum().item())
-
-            ep_info = info.get("episode", None) if isinstance(info, dict) else None
-            if isinstance(ep_info, dict):
-                try:
-                    # Prefer keys containing 'is_success', else any containing 'success'
+            
+            successes_found = []
+            
+            try:
+                ep_info = info.get("episode", None) if isinstance(info, dict) else None
+                if isinstance(ep_info, dict):
                     keys_lower = {k: k.lower() for k in ep_info.keys()}
                     candidates = [k for k, kl in keys_lower.items() if "is_success" in kl]
                     if not candidates:
@@ -56,7 +57,6 @@ class SuccessTrackerWrapper(gym.Wrapper):
                         if sv.ndim > 1:
                             sv = sv.squeeze(-1)
                         
-                        # Align shapes if possible
                         aligned_sv = None
                         if sv.numel() == finished_mask_cpu.numel():
                             aligned_sv = sv.view_as(finished_mask_cpu)[finished_mask_cpu]
@@ -64,17 +64,24 @@ class SuccessTrackerWrapper(gym.Wrapper):
                             aligned_sv = sv
                         elif sv.numel() == 1 and num_finished > 0:
                             aligned_sv = sv.expand(num_finished)
-                        else:
-                            continue
-
-                        # Convert to boolean successes and add to deque
-                        success_tensor = aligned_sv if aligned_sv.dtype == torch.bool else (aligned_sv.float() > 0.5)
-                        for success_val in success_tensor:
-                            self.episode_stats["success"].append(bool(success_val.item()))
                         
-                        # Use the first valid candidate
-                        break
-                except Exception:
-                    pass  # Best-effort logging
+                        if aligned_sv is not None:
+                            success_tensor = aligned_sv if aligned_sv.dtype == torch.bool else (aligned_sv.float() > 0.5)
+                            if success_tensor.ndim == 0:
+                                successes_found.append(bool(success_tensor.item()))
+                            else:
+                                for success_val in success_tensor:
+                                    successes_found.append(bool(success_val.item()))
+                            break
+            except Exception:
+                pass
+
+            # Log successes, or failures if no success info was found
+            if len(successes_found) == num_finished:
+                for success in successes_found:
+                    self.episode_stats["success"].append(success)
+            else:
+                for _ in range(num_finished):
+                    self.episode_stats["success"].append(False)
 
         return obs, reward, terminated, truncated, info

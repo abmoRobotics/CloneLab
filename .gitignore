@@ -266,7 +266,6 @@ cython_debug/
 *.vscode
 wandb
 data
-example*
 *.hdf5
 
 datasets
