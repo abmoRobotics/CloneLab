@@ -37,7 +37,7 @@ BASELINE_AGENTS = [
 ]
 
 
-def evaluate_baseline_agent(agent_name: str, env_name: str, num_steps: int = 100000):
+def evaluate_baseline_agent(agent_name: str, env_name: str, num_steps: int = 100000, num_envs: int = 20):
     """Evaluate a pretrained baseline agent on an environment"""
 
     print(f"\n{'='*60}")
@@ -57,7 +57,7 @@ def evaluate_baseline_agent(agent_name: str, env_name: str, num_steps: int = 100
     from CloneRL.utils.wrappers import SuccessTrackerWrapper
 
     # Set up environment
-    env_cfg = parse_env_cfg(env_name, device="cuda:0", num_envs=20)
+    env_cfg = parse_env_cfg(env_name, device="cuda:0", num_envs=num_envs)
 
     # Get agent configuration
     experiment_cfg_file = gym.spec(env_name).kwargs.get("skrl_cfgs")[
@@ -66,8 +66,9 @@ def evaluate_baseline_agent(agent_name: str, env_name: str, num_steps: int = 100
 
     # Create environment
     env = gym.make(env_name, cfg=env_cfg, render_mode=None)
-    env = SuccessTrackerWrapper(env)
+    env = SuccessTrackerWrapper(env, success_buffer_size=1_000_000)
     env = SkrlVecEnvWrapper(env, ml_framework="torch")
+
 
     # Create agent
     agent = create_agent(agent_name, env, experiment_cfg)
@@ -176,7 +177,8 @@ def main():
             result = evaluate_baseline_agent(
                 agent_name=agent_name,
                 env_name=env_name,
-                num_steps=args_cli.num_steps
+                num_steps=args_cli.num_steps,
+                num_envs=args_cli.num_envs
             )
             if result:
                 results.append(result)
