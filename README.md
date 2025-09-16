@@ -4,6 +4,33 @@ The purpose of this repository is to make a framework that can be used to train 
 2. Train a student policy using BC or Offline RL
 3. Evaluate the policy in the simulation framework of choice
 
+## Scoreboards 🏆
+
+CloneLab includes a comprehensive scoreboard system to track and compare model performance:
+
+- **[RLRoverLab Baselines](scoreboards/rlroverlab_baselines.md)** - Official baseline results from RLRoverLab
+- **[CloneLab Results](scoreboards/clonelab_results.md)** - Student model results trained using CloneLab
+
+### Quick Start with Scoreboards
+```bash
+# View current results
+python scoreboards/scoreboard_manager.py list
+
+# Add your result
+python scoreboards/scoreboard_manager.py add-result \
+  --name "My-IQL-Model" \
+  --algorithm "IQL" \
+  --environment "RoverNav-v0" \
+  --reward 480 \
+  --success-rate 0.85 \
+  --notes "My approach description"
+
+# Export to CSV
+python scoreboards/scoreboard_manager.py export --output results.csv
+```
+
+See [scoreboards/README.md](scoreboards/README.md) for detailed documentation.
+
 # Examples
 The following illustrates code snippets for each step.
 
