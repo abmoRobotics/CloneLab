@@ -69,7 +69,6 @@ def evaluate_baseline_agent(agent_name: str, env_name: str, num_steps: int = 100
     env = SuccessTrackerWrapper(env, success_buffer_size=1_000_000)
     env = SkrlVecEnvWrapper(env, ml_framework="torch")
 
-
     # Create agent
     agent = create_agent(agent_name, env, experiment_cfg)
 
