@@ -6,10 +6,7 @@ This scoreboard tracks the performance of official baseline models from the RLRo
 
 | Model Name    | Model Type | Algorithm | Environment         | Metric  | Score | SR    | Notes                    |
 |---------------|------------|-----------|---------------------|---------|-------|-------|--------------------------|
-| BC-Expert     | Baseline   | BC        | RoverNav-v0        | Reward  | 500   | 0.85  | Official baseline        |
-| SAC-Baseline  | Baseline   | SAC       | RoverNav-v1        | Reward  | 480   | 0.87  | From RLRoverLab repo     |
-| CQL-Baseline  | Baseline   | CQL       | RoverSim-v2        | Reward  | 420   | 0.81  | Default hyperparams      |
-| AWAC-Baseline | Baseline   | AWAC      | RoverNav-v0        | Reward  | 465   | 0.84  | Trained on dataset X     |
+| PPO-Teacher   | Teacher    | PPO       | RoverNav-v0        | Reward  | 500   | 0.85  | Official baseline        |
 
 ## Environment Descriptions
 
