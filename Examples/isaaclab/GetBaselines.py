@@ -113,12 +113,21 @@ def evaluate_baseline_agent(agent_name: str, env_name: str, num_steps: int = 100
             print(f"Success rate: {success_rate:.2%}")
             print(f"Total episodes: {num_episodes}")
 
+        # Extract average reward from the environment's episode stats
+        avg_reward = 0.0
+        if hasattr(env, "episode_stats") and "reward" in env.episode_stats:
+            reward_deque = env.episode_stats["reward"]
+            if len(reward_deque) > 0:
+                avg_reward = sum(reward_deque) / len(reward_deque)
+            print(f"Average reward: {avg_reward:.2f}")
+
         return {
             'agent_name': agent_name,
             'env_name': env_name,
             'num_steps': num_steps,
             'status': 'completed',
             'success_rate': success_rate,
+            'avg_reward': avg_reward,
             'num_episodes': num_episodes
         }
 
@@ -187,15 +196,16 @@ def main():
     print(f"\n{'='*80}")
     print("BASELINE EVALUATION SUMMARY")
     print(f"{'='*80}")
-    print(f"{'Environment':<25} {'Agent':<10} {'Steps':<10} {'Episodes':<10} {'Status':<10} {'SR (%)':<10}")
-    print(f"{'-'*80}")
+    print(f"{'Environment':<25} {'Agent':<10} {'Steps':<10} {'Episodes':<10} {'Status':<10} {'SR (%)':<10} {'Avg Reward':<12}")
+    print(f"{'-'*90}")
 
     for result in results:
         status = result.get('status', 'unknown')
         success_rate = result.get('success_rate', 0) * 100
+        avg_reward = result.get('avg_reward', 0)
         num_episodes = result.get('num_episodes', 0)
         print(
-            f"{result['env_name']:<25} {result['agent_name']:<10} {result.get('num_steps', 'N/A'):<10} {num_episodes:<10} {status:<10} {success_rate:<10.2f}")
+            f"{result['env_name']:<25} {result['agent_name']:<10} {result.get('num_steps', 'N/A'):<10} {num_episodes:<10} {status:<10} {success_rate:<10.2f} {avg_reward:<12.2f}")
 
     # Clozse simulation
     simulation_app.close()
