@@ -10,14 +10,12 @@ This scoreboard tracks the performance of official baseline models from the RLRo
 | SAC-Baseline  | Baseline   | SAC       | RoverNav-v1        | Reward  | 480   | 0.87  | From RLRoverLab repo     |
 | CQL-Baseline  | Baseline   | CQL       | RoverSim-v2        | Reward  | 420   | 0.81  | Default hyperparams      |
 | AWAC-Baseline | Baseline   | AWAC      | RoverNav-v0        | Reward  | 465   | 0.84  | Trained on dataset X     |
-| PPO-Expert    | Baseline   | PPO       | CartPole-v1        | Reward  | 475   | 0.95  | Gymnasium environment    |
 
 ## Environment Descriptions
 
 - **RoverNav-v0**: Basic rover navigation task
 - **RoverNav-v1**: Enhanced rover navigation with obstacles  
 - **RoverSim-v2**: Full rover simulation environment
-- **CartPole-v1**: Classic control task from Gymnasium
 
 ## Metrics
 
