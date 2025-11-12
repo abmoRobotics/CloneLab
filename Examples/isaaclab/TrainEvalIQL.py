@@ -1,22 +1,22 @@
 from typing import Dict
 from typing import Optional, Sequence
-#import rover_envs
+# import rover_envs
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import argparse
 import sys
 import isaaclab
-#from isaaclab.app import AppLauncher
+# from isaaclab.app import AppLauncher
 from models import TwinQ_image, actor_gaussian_image, v_image
 # from skrl.utils import set_seed
 from CloneRL.utils import set_seed
-#from skrl.envs.loaders.torch import load_isaaclab_env
+# from skrl.envs.loaders.torch import load_isaaclab_env
 from CloneRL.algorithms.torch.offline_rl.iql import IQL
 from CloneRL.dataloader.hdf import (HDF_DEFAULT_IL_MAPPER,
                                     HDF_DEFAULT_ORL_MAPPER, HDF5Dataset)
 from CloneRL.dataloader.hdf.hdf_loader import (
-    CloneLabDataset,HDF5DictDataset, HDF5DictDataset2, HDF5DictDatasetRandom)
+    CloneLabDataset, HDF5DictDataset, HDF5DictDataset2, HDF5DictDatasetRandom)
 from CloneRL.trainers.torch.sequential import SequentialTrainer as Trainer
 import gymnasium as gym
 parser = argparse.ArgumentParser("Welcome to Isaac Lab: Omniverse Robotics Environments!")
@@ -32,6 +32,7 @@ parser.add_argument("--checkpoint", type=str, default=None, help="Path to model 
 
 set_seed(12345)
 
+
 def _print_cfg(d, indent=0) -> None:
     """Print the environment configuration
 
@@ -45,6 +46,7 @@ def _print_cfg(d, indent=0) -> None:
             _print_cfg(value, indent + 1)
         else:
             print("  |   " * indent + f"  |-- {key}: {value}")
+
 
 def load_isaaclab_env(
     task_name: str = "",
@@ -93,7 +95,7 @@ def load_isaaclab_env(
     if defined:
         if num_envs is not None:
             print("Overriding num_envs with command line argument (--num_envs)")
-            #logger.warning("Overriding num_envs with command line argument (--num_envs)")
+            # logger.warning("Overriding num_envs with command line argument (--num_envs)")
     # get num_envs from function arguments
     elif num_envs is not None and num_envs > 0:
         sys.argv.append("--num_envs")
@@ -109,7 +111,7 @@ def load_isaaclab_env(
     if defined:
         if headless is not None:
             print("Overriding headless with command line argument (--headless)")
-            #logger.warning("Overriding headless with command line argument (--headless)")
+            # logger.warning("Overriding headless with command line argument (--headless)")
     # get headless from function arguments
     elif headless is not None:
         sys.argv.append("--headless")
@@ -168,6 +170,7 @@ def load_isaaclab_env(
 
     return env
 
+
 def train_iql():
 
     # Define path to HDF5 file and mapper for training and validation
@@ -207,7 +210,7 @@ def train_iql():
         "proprioception_channels": 3,
         "image_channels": 2,
         "action_dim": 2,
-        "mlp_features": [512, 256, 128, 64],
+        "mlp_features": [256, 160, 128],
         "image_input_dim": [224, 224],
         "image_encoder_features": [8, 16, 32, 64],
         "image_fc_features": [120, 60],
@@ -215,7 +218,7 @@ def train_iql():
         "dropout_rate": 0,
         "use_batch_norm": False
     }
-    
+
     iql_config = {
         "actions_lr": 1e-3,
         "value_lr": 3e-4,
@@ -238,7 +241,7 @@ def train_iql():
                 critic_policy=critic,
                 cfg=iql_config)
 
-    #def env_loader(): return wrap_env(load_isaac_orbit_env(task_name="AAURoverEnvCamera-v0"), wrapper="isaac-orbit")
+    # def env_loader(): return wrap_env(load_isaac_orbit_env(task_name="AAURoverEnvCamera-v0"), wrapper="isaac-orbit")
 
     # Define the trainer with improved configuration
     trainer_config = {
@@ -252,10 +255,10 @@ def train_iql():
         "log_freq": 50,
         "mixed_precision": False,
     }
-    
+
     trainer = Trainer(cfg=trainer_config,
                       policy=agent,
-                      dataset=dataset, 
+                      dataset=dataset,
                       val_dataset=dataset_val)
 
     # Start training

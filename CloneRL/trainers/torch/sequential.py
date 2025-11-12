@@ -158,7 +158,7 @@ class SequentialTrainer(BaseTrainer):
         # Save final model
         self.policy.save_model("final_model.pt")
         print(f"Training completed! Best validation loss: {best_val_loss:.6f}")
-        
+        wandb.finish()
         return {
             'best_val_loss': best_val_loss,
             'train_losses': train_losses,
@@ -327,3 +327,111 @@ class SequentialTrainer(BaseTrainer):
                 # print(f'log keys {next_info["log"].keys()}')
                 # print(f'episode keys {next_info["episode"].keys()}')
                 obs, info = next_obs, next_info
+
+
+class SequentialTrainerHeightmap(SequentialTrainer):
+    """Temporary trainer for heightmap-based policies for testing."""
+
+    def simulation_validation(self, env_loader):
+        """Run the environment simulation asynchronously with heightmap observations."""
+        if env_loader is not None:
+            self.env = env_loader()
+
+        obs, info = self.env.reset()
+        first_iter = True
+        num_steps = 100000
+
+        for timestep in range(num_steps):
+            with torch.no_grad():
+                if first_iter:
+                    first_iter = False
+                    actions = torch.zeros((obs.shape[0], 2))
+                else:
+                    # Use heightmap from info dict, assuming key is 'height_scan'
+                    heightmap = info['height_scan'].unsqueeze(
+                        1)  # Add channel dimension
+                    heightmap = torch.nan_to_num(heightmap, nan=0.0)
+                    heightmap = torch.clamp(heightmap, min=-5.0, max=5.0)
+                    state = {'proprioceptive': obs[:, :4], 'image': heightmap}
+                    actions = self.policy.act(state)
+
+                next_obs, rewards, terminated, truncated, next_info = self.env.step(
+                    actions)
+                if hasattr(self.policy, "record_transitions"):
+                    self.policy.record_transitions(
+                        rewards, terminated, truncated, next_info, step=timestep)
+                obs, info = next_obs, next_info
+
+        if hasattr(self.policy, "finalize_summary"):
+            try:
+                self.policy.finalize_summary()
+            except Exception:
+                pass
+
+    def evaluate(self, env, num_steps=1000):
+        """Evaluate the policy with heightmap observations."""
+        # start a new wandb run
+        wandb.init(project="CloneLab-eval", reinit=True)
+        obs, info = env.reset()
+        first_iter = True
+
+        if isinstance(obs, dict):
+            print(f'is dict obs keys: {obs.keys()}')
+            obs_policy = obs.get("policy", obs)
+            # Assuming height_scan is part of the observation dictionary
+            # if has height_scan key
+            if "height_scan" not in obs_policy:
+                print('height_scan key not in obs_policy')
+                print(f'obs_policy keys: {obs_policy.keys()}')
+
+            terminated = torch.zeros(
+                (obs_policy["height_scan"].shape[0], 1))
+        else:
+            # Fallback for non-dict observations, though might need adjustment
+            print('obs is not a dict')
+            print(f'obs shape: {obs.shape}')
+            terminated = torch.zeros((obs.shape[0], 1))
+
+        print("Starting evaluation with heightmaps...")
+        for timestep in tqdm.tqdm(range(num_steps)):
+            with torch.inference_mode():
+                if first_iter:
+                    first_iter = False
+                    obs_policy = obs.get("policy", obs)
+                    actions = torch.zeros(
+                        (obs_policy["height_scan"].shape[0], 2))
+                else:
+                    obs_policy = obs.get("policy", obs)
+
+                    # Process heightmap, assuming key is 'height_scan'
+                    heightmap = obs_policy["height_scan"]
+                    if len(heightmap.shape) == 3:  # (B, H, W)
+                        heightmap = heightmap.unsqueeze(1)  # -> (B, 1, H, W)
+                    # (B, H, W, 1)
+                    elif len(heightmap.shape) == 4 and heightmap.shape[3] == 1:
+                        heightmap = heightmap.permute(
+                            0, 3, 1, 2)  # -> (B, 1, H, W)
+
+                    heightmap = torch.nan_to_num(heightmap, nan=0.0)
+                    heightmap = torch.clamp(heightmap, min=-5.0, max=5.0)
+
+                    # Process proprioceptive data
+                    distance_obs = obs_policy["distance"]
+                    heading_obs = obs_policy["heading"]
+                    angle_diff_obs = obs_policy["angle_diff"]
+                    proprioceptive_obs = torch.cat(
+                        (angle_diff_obs, distance_obs, heading_obs), dim=1)
+
+                    state = {
+                        'proprioceptive': proprioceptive_obs,
+                        'image': heightmap
+                    }
+                    actions = self.policy.act(state, terminated)
+
+                next_obs, rewards, terminated, truncated, next_info = env.step(
+                    actions)
+                if hasattr(self.policy, "record_transitions"):
+                    self.policy.record_transitions(
+                        rewards, terminated, truncated, next_info, step=timestep)
+                obs, info = next_obs, next_info
+        wandb.finish()
