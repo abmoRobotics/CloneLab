@@ -476,22 +476,11 @@ class HDF5DictDataset2(Dataset):
 
 class HDF5DictDatasetRandom(Dataset):
     """HDF5 dataset that returns random timesteps from random episodes to reduce overfitting.
-    Each __getitem__ call returns a sequence of frames with optional strided stacking for temporal context.
-    
-    Args:
-        file_path: Path to the HDF5 file
-        min_idx: Minimum episode index
-        max_idx: Maximum episode index
-        total_samples: Virtual dataset size
-        proprioceptive_keys: List of proprioceptive observation keys
-        use_frame_stacking: If True, use strided frame stacking; if False, use single frames (default: False)
-        frame_stack_stride: Stride between frames when stacking (default: 3)
-        num_stacked_frames: Number of frames to stack (default: 3)
-    """
+    Each __getitem__ call returns a sequence of frames with strided stacking for temporal context."""
 
     def __init__(self, file_path: str, min_idx=0, max_idx=None, total_samples=120000, 
                  proprioceptive_keys: List[str] = ['angle_diff', 'distance', 'heading'],
-                 use_frame_stacking: bool = False, frame_stack_stride: int = 3, num_stacked_frames: int = 3):
+                 frame_stack_stride: int = 3, num_stacked_frames: int = 3):
         self.file_path = file_path
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.episodic = False  # This dataset returns individual timesteps, not episodes
@@ -499,13 +488,10 @@ class HDF5DictDatasetRandom(Dataset):
         self.max_idx = max_idx
         self.total_samples = total_samples  # Virtual dataset size
         self.proprioceptive_keys = proprioceptive_keys
-        self.use_frame_stacking = use_frame_stacking
         self.frame_stack_stride = frame_stack_stride
         self.num_stacked_frames = num_stacked_frames
-        
         # Minimum timestep needed to have full history: (num_stacked_frames - 1) * stride
-        # Only applies when using frame stacking
-        self.min_history_timestep = (num_stacked_frames - 1) * frame_stack_stride if use_frame_stacking else 0
+        self.min_history_timestep = (num_stacked_frames - 1) * frame_stack_stride
 
         with h5py.File(self.file_path, 'r') as file:
             if 'data' not in file:
@@ -513,6 +499,7 @@ class HDF5DictDatasetRandom(Dataset):
             demo_keys = sorted(list(file['data'].keys()))
             
             # Build a list of valid (episode, timestep) pairs
+            # Now we need enough history for strided stacking
             self.valid_indices = []
             for demo_key in demo_keys:
                 demo_group = file['data'][demo_key]
@@ -624,13 +611,9 @@ class HDF5DictDatasetRandom(Dataset):
             reward = torch.from_numpy(np.atleast_1d(demo_group['rewards'][timestep])).to(self.device).float()
             done = torch.from_numpy(np.atleast_1d(demo_group['dones'][timestep])).to(self.device)
 
-            # Choose extraction method based on frame stacking setting
-            if self.use_frame_stacking:
-                obs = self._extract_obs_stacked(demo_group['obs'], timestep)
-                next_obs = self._extract_obs_stacked(demo_group['next_obs'], timestep)
-            else:
-                obs = self._extract_obs_single(demo_group['obs'], timestep)
-                next_obs = self._extract_obs_single(demo_group['next_obs'], timestep)
+            # Use strided stacking for observations
+            obs = self._extract_obs_stacked(demo_group['obs'], timestep)
+            next_obs = self._extract_obs_stacked(demo_group['next_obs'], timestep)
 
         # Weights and masks placeholders
         weight = torch.ones_like(reward)

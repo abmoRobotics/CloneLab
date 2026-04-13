@@ -14,12 +14,26 @@ def evaluate_model(checkpoint_path, model_name):
     :param checkpoint_path: Path to the directory containing the saved model weights.
     """
 
+    model_config2 = {
+        "proprioception_channels": 3,
+        "image_channels": 2,
+        "action_dim": 2,
+        "mlp_features": [512, 256, 128, 64],
+        "image_input_dim": [160, 90],
+        "image_encoder_features": [8, 16, 32, 64],
+        "image_fc_features": [120, 60],
+        "activation": "leaky_relu",
+        "dropout_rate": 0,
+        "use_batch_norm": False
+    }
+
+
     model_config = {
         "proprioception_channels": 3,
         "image_channels": 2,
         "action_dim": 2,
-        "mlp_features": [512, 256, 128,64],
-        "image_input_dim": [224, 224],
+        "mlp_features": [256, 160, 128],
+        "image_input_dim": [160, 90],
         "image_encoder_features": [8, 16, 32, 64],
         "image_fc_features": [120, 60],
         "activation": "leaky_relu",
@@ -28,7 +42,7 @@ def evaluate_model(checkpoint_path, model_name):
     }
 
     # Define model
-    actor = actor_gaussian_image(**model_config).to("cuda:0")
+    actor = actor_gaussian_image(**model_config2).to("cuda:0")
     critic = TwinQ_image(**model_config).to("cuda:0")
     value = v_image(**model_config).to("cuda:0")
 
@@ -49,7 +63,7 @@ def evaluate_model(checkpoint_path, model_name):
     # Evaluate the model
     env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
     #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
-    trainer.evaluate(env, num_steps=10000)
+    trainer.evaluate(env, num_steps=1000)
 
 
 if __name__ == "__main__":
@@ -60,11 +74,17 @@ if __name__ == "__main__":
     # Make sure to replace this with the actual path to your checkpoint
     checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-19_17-35-24/checkpoints/"
     checkpoint_path = "runs/CloneLab-Examples_orbit/2025-08-12_10-12-20/checkpoints/" # old random
-    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-09-09_08-37-37/checkpoints/" # New camera position
-    #checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-08-22_11-23-33/checkpoints/" # old random different hyperparameters
+    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-09-12_10-11-58/checkpoints/" # New camera position
+    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-11-21_15-22-57/checkpoints/" # ~80 % SR after 1000 steps 120 envs
+    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-11-21_21-23-38/checkpoints/" # ~81.5 % SR after 1000 steps 120 envs
+    checkpoint_path = "runs/CloneLab-Examples_isaaclab/2025-11-22_18-24-00/checkpoints/" # ~78.75 % SR after 1000 steps 120 envs
     model_name = "best_model_8.pt"
     model_name = "best_model_9.pt"
     model_name = "best_model_epoch_9.pt"
+    model_name = "best_model_epoch_19.pt" # ~80% SR
+    model_name = "best_model_epoch_19.pt" # ~81.5% SR
+    model_name = "best_model_epoch_19.pt" # ~78.75% SR
+
 
     # Run the evaluation
     evaluate_model(checkpoint_path, model_name=model_name)

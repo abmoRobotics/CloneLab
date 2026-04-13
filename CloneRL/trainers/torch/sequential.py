@@ -259,7 +259,16 @@ class SequentialTrainer(BaseTrainer):
         average_loss = total_loss / num_batches if num_batches > 0 else float('inf')
         return average_loss
 
-    def evaluate(self, env, num_steps=1000):
+    def evaluate(self, env, num_steps=1000, use_frame_stacking=False, frame_stack_stride=3, num_stacked_frames=3):
+        """Evaluate the policy in the environment.
+        
+        Args:
+            env: The environment to evaluate in
+            num_steps: Number of steps to run
+            use_frame_stacking: If True, use strided frame stacking; if False, use single frames (default: False)
+            frame_stack_stride: Stride between frames when stacking (default: 3)
+            num_stacked_frames: Number of frames to stack (default: 3)
+        """
         obs, info = env.reset()
         first_iter = True
         #print(f'num envs: {env.num_envs}')
@@ -269,54 +278,69 @@ class SequentialTrainer(BaseTrainer):
             #print(f'obs keys: {obs["policy"].keys()}')
             print(f'number of envs: {obs["depth_image"].shape[0]}')
             terminated = torch.zeros((obs["depth_image"].shape[0], 1), dtype=torch.bool)
-        print("Starting evaluation...")
+        
+        # Initialize frame history buffers for strided stacking (only if using frame stacking)
+        rgb_history = None
+        depth_history = None
+        if use_frame_stacking:
+            # We need to store enough frames: (num_stacked_frames - 1) * stride + 1 frames
+            # For 3 frames with stride 3: indices [t-6, t-3, t] -> need 7 frames in buffer
+            history_length = (num_stacked_frames - 1) * frame_stack_stride + 1
+            print(f"Starting evaluation with frame stacking: {num_stacked_frames} frames, stride {frame_stack_stride}...")
+        else:
+            history_length = 1
+            print("Starting evaluation with single frame (no stacking)...")
+        
         for timestep in tqdm.tqdm(range(num_steps)):
             with torch.inference_mode():
                 if first_iter:
                     first_iter = False
                     actions = torch.zeros((obs["depth_image"].shape[0], 2))
+                    
+                    if use_frame_stacking:
+                        # Initialize history buffers with first frame
+                        obs_policy = obs["policy"] if "policy" in obs else obs
+                        depth_image = obs_policy["depth_image"].permute(0, 3, 1, 2)  # (B, C, H, W)
+                        depth_image = torch.clip(depth_image, 0.0, 6.0)
+                        rgb = obs_policy["rgb_image"].permute(0, 3, 1, 2)
+                        
+                        # Initialize history with repeated first frame: (B, history_length, C, H, W)
+                        depth_history = depth_image.unsqueeze(1).repeat(1, history_length, 1, 1, 1)
+                        rgb_history = rgb.unsqueeze(1).repeat(1, history_length, 1, 1, 1)
                 else:
-                    ##### OOOOLLLLDDD IMPLEMENTATION #####
-                    # rgb = info['rgb']
-                    # rgb = torch.nan_to_num(rgb, nan=256.0)
-                    # rgb = torch.clamp(rgb, min=0.0, max=256.0)
-                    # rgb = rgb.permute(0, 3, 1, 2)
-                    # depth = info['depth'].unsqueeze(1)
-                    # depth = torch.nan_to_num(depth, nan=256.0)
-                    # depth = torch.clamp(depth, min=0.0, max=256.0)
-                    # state = {'proprioceptive': obs[:, 2:4], 'image': torch.cat((depth, rgb), dim=1)}
-                    # actions = self.policy.act(state, terminated)
-                    #print(f'obs tensor shape: {obs.shape}')
-                    #print(env.observation_space)
-                    #obs = unflatten_tensorized_space(obs, env.observation_space)
-                    #print(f"obs keys: {obs.keys()}")
                     obs = obs["policy"]
-                    ##### NEW IMPLEMENTATION #####
                     depth_image = obs["depth_image"].permute(0, 3, 1, 2)  # Convert to (B, C, H, W)
                     depth_image = torch.clip(depth_image, 0.0, 6.0)
-                    #depth_image[:, 50:90, 30:130] = 0.0
-                    depth_image[:, 200:] = 0.0
-                    rgb = obs["rgb_image"].permute(0,3,1,2)
-                    rgb[:, 200:] = 0.0
-                    #rgb[:, 50:90,30:130] = 0.0
-                    grayscale = rgb[:, 0] * 0.2989 + rgb[:, 1] * 0.5870 + rgb[:, 2] * 0.1140
-                    grayscale = grayscale / 255
-                    grayscale = grayscale.unsqueeze(1)
-                    #grayscale.unsqueeze()
-                    #image = torch.cat([depth, rgb], dim=1)
-                    image = torch.cat([depth_image, grayscale], dim=1)
-                    #image = depth_image
-                    #depth_image = F.interpolate(depth_image, size=(90, 160), mode='bilinear', align_corners=False)
+                    rgb = obs["rgb_image"].permute(0, 3, 1, 2)
+                    
+                    if use_frame_stacking:
+                        # Update frame history buffers (shift and add new frame)
+                        depth_history = torch.cat([depth_history[:, 1:, :, :, :], depth_image.unsqueeze(1)], dim=1)
+                        rgb_history = torch.cat([rgb_history[:, 1:, :, :, :], rgb.unsqueeze(1)], dim=1)
+                        
+                        # Extract strided frames: indices [0, stride, 2*stride, ...] from history
+                        stride_indices = [i * frame_stack_stride for i in range(num_stacked_frames)]
+                        
+                        # Get strided frames and stack along channel dimension
+                        depth_stacked = torch.cat([depth_history[:, idx, :, :, :] for idx in stride_indices], dim=1)
+                        rgb_stacked = torch.cat([rgb_history[:, idx, :, :, :] for idx in stride_indices], dim=1)
+                        
+                        image_out = rgb_stacked
+                        depth_out = depth_stacked
+                    else:
+                        # Single frame mode (old implementation)
+                        image_out = rgb
+                        depth_out = depth_image
+                    
                     actions = obs["actions"]
                     distance_obs = obs["distance"]
                     heading_obs = obs["heading"]
                     angle_diff_obs = obs["angle_diff"]
-                    #proprioceptive_obs = torch.cat((distance_obs, heading_obs, angle_diff_obs), dim=1)
                     proprioceptive_obs = torch.cat((angle_diff_obs, distance_obs, heading_obs), dim=1)
                     state = {
                         'proprioceptive': proprioceptive_obs,
-                        'image': image#depth_image
-                    
+                        'image': image_out,
+                        'depth': depth_out
                     }
                     actions = self.policy.act(state, terminated)
 

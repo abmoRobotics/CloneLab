@@ -267,5 +267,6 @@ cython_debug/
 wandb
 data
 *.hdf5
+*.pbtxt
 
 datasets
