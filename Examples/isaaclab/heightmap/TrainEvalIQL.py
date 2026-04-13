@@ -7,8 +7,8 @@ import torch.nn.functional as F
 import argparse
 import sys
 import isaaclab
-#from isaaclab.app import AppLauncher
-from models_cai import TwinQ_image, actor_gaussian_image, v_image
+# from isaaclab.app import AppLauncher
+from models import TwinQ_image, actor_gaussian_image, v_image
 # from skrl.utils import set_seed
 from CloneRL.utils import set_seed
 # from skrl.envs.loaders.torch import load_isaaclab_env
@@ -16,8 +16,8 @@ from CloneRL.algorithms.torch.offline_rl.iql import IQL
 from CloneRL.dataloader.hdf import (HDF_DEFAULT_IL_MAPPER,
                                     HDF_DEFAULT_ORL_MAPPER, HDF5Dataset)
 from CloneRL.dataloader.hdf.hdf_loader import (
-    CloneLabDataset, HDF5DictDataset, HDF5DictDataset2, HDF5DictDatasetRandom)
-from CloneRL.trainers.torch.sequential import SequentialTrainer as Trainer
+    CloneLabDataset, HDF5DictDataset, HDF5DictDataset2, HDF5DictDatasetRandom, HDF5DictDatasetRandomHeightmap)
+from CloneRL.trainers.torch.sequential import SequentialTrainerHeightmap as Trainer
 import gymnasium as gym
 parser = argparse.ArgumentParser("Welcome to Isaac Lab: Omniverse Robotics Environments!")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
@@ -69,21 +69,17 @@ def load_isaaclab_env(
     if defined:
         arg_index = sys.argv.index("--task") + 1
         if arg_index >= len(sys.argv):
-            raise ValueError(
-                "No task name defined. Set the task_name parameter or use --task <task_name> as command line argument"
-            )
+            raise ValueError("No task name defined. Set the task_name parameter or use --task <task_name> as command line argument")
         if task_name and task_name != sys.argv[arg_index]:
             print(f"Overriding task ({task_name}) with command line argument ({sys.argv[arg_index]})")
-            #logger.warning(f"Overriding task ({task_name}) with command line argument ({sys.argv[arg_index]})")
+            # logger.warning(f"Overriding task ({task_name}) with command line argument ({sys.argv[arg_index]})")
     # get task name from function arguments
     else:
         if task_name:
             sys.argv.append("--task")
             sys.argv.append(task_name)
         else:
-            raise ValueError(
-                "No task name defined. Set the task_name parameter or use --task <task_name> as command line argument"
-            )
+            raise ValueError("No task name defined. Set the task_name parameter or use --task <task_name> as command line argument")
 
     # check num_envs from command line arguments
     defined = False
@@ -125,12 +121,8 @@ def load_isaaclab_env(
     parser.add_argument("--task", type=str, default=None, help="Name of the task.")
     parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
     parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-    parser.add_argument(
-        "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
-    )
-    parser.add_argument(
-        "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
-    )
+    parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
+    parser.add_argument("--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes.")
 
     # launch the simulation app
     try:
@@ -174,81 +166,30 @@ def load_isaaclab_env(
 def train_iql():
 
     # Define path to HDF5 file and mapper for training and validation
-    # data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset1/with_rgb_and_depth_2.hdf5"
-    # data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset4_180_320/with_rgb_and_depth_0.hdf5"
-    #data = "/media/anton/T7 Shield/University/1. Master/Datasets/1. Simulation/dataset3/with_rgb_and_depth_0.hdf5"
-    #data = "/home/robotlab/Documents/datasets/dataset_new2_combined.hdf5" # OLD ONE HERE
-    #data2 = "/home/robotlab/Documents/datasets/combined_dataset_last_episodes.hdf5" # OLD ONE HERE
-    #data = "/home/robotlab/ws/RLRoverLab/datasets/dataset_old_camera_pos.hdf5"
-    #data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
-   # data2 = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
-    #data = "/media/anton/T7 Shield/University/PHD/rover_simulation_datasets/dataset_new2.hdf5"
+    data = "/home/robotlab/Documents/datasets/dataset_new2.hdf5"
+    data = "/media/anton/T7 Shield/University/PHD/rover_simulation_datasets/dataset_new2.hdf5"
 
-    ## NOV EXPERIMENTS 025 dataset_old_camera was set
-    #data = "/home/robotlab/ws/RLRoverLab/datasets/dataset_old_camera_pos.hdf5"
-    data = "/home/robotlab/ws/RLRoverLab/datasets/new_camera_pos_160_90.hdf5"
-
-    # Define what data to use typically "observations" and "actions", but for t his example we train on depth aswell
-    # HDF_DEFAULT_ORL_MAPPER = {
-    #     "observations": "observations",
-    #     "actions": "actions",
-    #     "depth": "depth"
-    # }
+    # Define what data to use typically "observations" and "actions"
     HDF_DEFAULT_ORL_MAPPER = {
         "observations": "observations",
         "actions": "actions",
         "rewards": "rewards",
         "next_observation": "observations",
         "dones": "terminated",
-        "depth": "depth",
-        "rgb": "rgb"
+        "height_scan": "height_scan"
     }
 
     # Define the dataset and validation dataset, we use the same dataset for both here
-    # Frame stacking configuration: 
-    # - use_frame_stacking=True: stack 3 frames with stride 3 (frames at t-6, t-3, t)
-    # - use_frame_stacking=False: use single frames (old implementation)
-    use_frame_stacking = False  # Set to True to enable strided frame stacking
-    frame_stack_stride = 3
-    num_stacked_frames = 3
-    
-    dataset = HDF5DictDatasetRandom(data, min_idx=10000, total_samples=240000,
-                                    use_frame_stacking=use_frame_stacking,
-                                    frame_stack_stride=frame_stack_stride, 
-                                    num_stacked_frames=num_stacked_frames)
-    dataset_val = HDF5DictDatasetRandom(
-        data, min_idx=1, max_idx=100, total_samples=10000,
-        use_frame_stacking=use_frame_stacking,
-        frame_stack_stride=frame_stack_stride,
-        num_stacked_frames=num_stacked_frames)
+    dataset = HDF5DictDatasetRandomHeightmap(data, min_idx=10000, total_samples=120000)
+    dataset_val = HDF5DictDatasetRandomHeightmap(data, min_idx=1, max_idx=100, total_samples=10000)
 
     # Define model configurations
-    # Note: when use_frame_stacking=True, channels are multiplied by num_stacked_frames
-    # RGB: 3 channels * 3 frames = 9 channels, Depth: 1 channel * 3 frames = 3 channels
-    image_channel_multiplier = num_stacked_frames if use_frame_stacking else 1
-    depth_channel_multiplier = num_stacked_frames if use_frame_stacking else 1
-    
-    model_config2 = {
-        "proprioception_channels": 3,
-        "image_channels": 3 * image_channel_multiplier,  # RGB: 3 or 9 channels
-        "depth_channels": 1 * depth_channel_multiplier,  # Depth: 1 or 3 channels
-        "action_dim": 2,
-        "mlp_features": [512, 256, 128, 64],
-        "image_input_dim": [160, 90],
-        "image_encoder_features": [8, 16, 32, 64],
-        "image_fc_features": [120, 60],
-        "activation": "leaky_relu",
-        "dropout_rate": 0,
-        "use_batch_norm": False
-    }
-
     model_config = {
         "proprioception_channels": 3,
-        "image_channels": 3 * image_channel_multiplier,  # RGB: 3 or 9 channels
-        "depth_channels": 1 * depth_channel_multiplier,  # Depth: 1 or 3 channels
+        "image_channels": 1,  # Heightmap has 1 channel
         "action_dim": 2,
         "mlp_features": [256, 160, 128],
-        "image_input_dim": [160, 90],
+        "heightmap_dim": 10201,
         "image_encoder_features": [8, 16, 32, 64],
         "image_fc_features": [120, 60],
         "activation": "leaky_relu",
@@ -257,18 +198,18 @@ def train_iql():
     }
 
     iql_config = {
-        "actions_lr": 3e-4,
+        "actions_lr": 1e-3,
         "value_lr": 3e-4,
         "critic_lr": 3e-4,
         "discount": 0.99,
-        "tau": 0.01,
+        "tau": 0.005,
         "expectile": 0.8,
-        "temperature": 0.0,
+        "temperature": 0.1,
         "target_update_freq": 1,
     }
 
     # Define model with improved configurations
-    actor = actor_gaussian_image(**model_config2).to("cuda:0")
+    actor = actor_gaussian_image(**model_config).to("cuda:0")
     critic = TwinQ_image(**model_config).to("cuda:0")
     value = v_image(**model_config).to("cuda:0")
 
@@ -278,19 +219,17 @@ def train_iql():
                 critic_policy=critic,
                 cfg=iql_config)
 
-    # def env_loader(): return wrap_env(load_isaac_orbit_env(task_name="AAURoverEnvCamera-v0"), wrapper="isaac-orbit")
-
     # Define the trainer with improved configuration
     trainer_config = {
-        "batch_size": 100,  # Reduced from 100 for more stable gradients
-        "epochs": 20,      # Increased for better convergence
-        "num_workers": 16,
+        "batch_size": 100,
+        "epochs": 10,
+        "num_workers": 8,
         "shuffle": True,
         "early_stopping_patience": 10,
         "save_freq": 2,
         "validation_freq": 1,
         "log_freq": 50,
-        "mixed_precision": True,
+        "mixed_precision": False,
     }
 
     trainer = Trainer(cfg=trainer_config,
@@ -304,36 +243,15 @@ def train_iql():
     return trainer
 
 
-def eval(trainer: Trainer, use_frame_stacking=False, frame_stack_stride=3, num_stacked_frames=3):
-    # AppLauncher.add_app_launcher_args(parser)
-    # args_cli, hydra_args = parser.parse_known_args()
-    # sys.argv = [sys.argv[0]] + hydra_args
-    # app_launcher = AppLauncher(args_cli)
-    # simulation_app = app_launcher.app
-    # from isaaclab_tasks.utils import parse_env_cfg  # noqa: F401, E402
-    # import rover_envs  # noqa: F401
-    # import rover_envs.envs.navigation.robots  # noqa: F401
-    # env_cfg = parse_env_cfg(
-    #     args_cli.task, device="cuda:0" if not args_cli.cpu else "cpu", num_envs=args_cli.num_envs
-    # )
-    # env = gym.make(args_cli.task, cfg=env_cfg)
-    # env.reset()
-    # #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
-    # #env = wrap_env(env, wrapper="isaaclab")
-    # trainer.evaluate(env, num_steps=10000)
-    env = load_isaaclab_env(task_name="AAURoverEnvRGBDRaw-v0")
-    #env = load_isaaclab_env(task_name="AAURoverEnvRGBDRawTemp-v0")
-    #env = wrap_env(env)
-    evaluator = train_iql()
-    trainer.evaluate(env, num_steps=10000, use_frame_stacking=use_frame_stacking,
-                     frame_stack_stride=frame_stack_stride, num_stacked_frames=num_stacked_frames)
-
-    
+def eval(trainer: Trainer):
+    # Assumes an environment that provides heightmap observations
+    env = load_isaaclab_env(task_name="AAURoverEnvDict-v0")
+    trainer.evaluate(env, num_steps=10000)
 
 
 if __name__ == "__main__":
     import multiprocessing as mp
     mp.set_start_method('spawn', force=True)
     trainer = train_iql()
-    # Set use_frame_stacking=True to enable strided frame stacking, False for single frames
-    eval(trainer, use_frame_stacking=False, frame_stack_stride=3, num_stacked_frames=3)
+    print(trainer)
+    eval(trainer)

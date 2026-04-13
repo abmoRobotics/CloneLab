@@ -288,7 +288,7 @@ class HDF5DictDataset(Dataset):
 
     def __len__(self):
         if self.max_idx is not None:
-           return min(self.max_idx, len(self.demo_keys)) - self.min_idx
+            return min(self.max_idx, len(self.demo_keys)) - self.min_idx
         return len(self.demo_keys)
 
     def _extract_obs(self, obs_group):
@@ -305,9 +305,8 @@ class HDF5DictDataset(Dataset):
         depth = torch.clamp(depth, min=0.0, max=6.0) #/ 4
 
         depth[:, 50:90, 30:130] = 0.0
-        rgb[:,50:90, 30:130] = 0.0
-        #depth = F.interpolate(depth, size=(90, 160), mode='bilinear', align_corners=False)
-        grayscale = rgb[:, 0] * 0.2989 + rgb[:, 1] * 0.5870 + rgb[:, 2] * 0.1140
+        rgb[:, 50:90, 30:130] = 0.0
+        # depth = F.interpolate(depth, size=(90, 160), mode='bilinear', align_corners=False)
         grayscale = grayscale / 255
         grayscale = grayscale.unsqueeze(1)
         #grayscale.unsqueeze()
@@ -325,7 +324,7 @@ class HDF5DictDataset(Dataset):
 
         obs_dict = {
             "proprioceptive": proprioceptive,
-            "image": image, 
+            "image": image,
             #"height_scan": height_scana
         }
 
@@ -368,7 +367,7 @@ class HDF5DictDataset(Dataset):
         actions = full_actions[:-1]
         rewards = full_rewards[:-1]
         dones = full_dones[:-1]
-        
+
         # Slice each tensor within the observation dictionaries
         obs = {key: tensor[:-1] for key, tensor in full_obs.items()}
         next_obs = {key: tensor[:-1] for key, tensor in full_next_obs.items()}
@@ -378,9 +377,8 @@ class HDF5DictDataset(Dataset):
         weights = torch.ones_like(rewards)
         # placeholder for masks (now correctly sized)
         masks = torch.ones_like(rewards)
-        
-        return obs, actions, rewards, next_obs, dones, weights, masks
 
+        return obs, actions, rewards, next_obs, dones, weights, masks
 
 
 class HDF5DictDataset2(Dataset):
@@ -403,11 +401,11 @@ class HDF5DictDataset2(Dataset):
         if max_idx is None:
             max_idx = len(demo_keys)
 
-        self.demo_keys = demo_keys#[min_idx:max_idx]
+        self.demo_keys = demo_keys  # [min_idx:max_idx]
 
     def __len__(self):
         if self.max_idx is not None:
-           return min(self.max_idx, len(self.demo_keys)) - self.min_idx
+            return min(self.max_idx, len(self.demo_keys)) - self.min_idx
         return len(self.demo_keys)
 
     def _extract_obs(self, obs_group, indices=None):
@@ -637,3 +635,41 @@ class HDF5DictDatasetRandom(Dataset):
         mask = torch.ones_like(reward)
         
         return obs, action, reward, next_obs, done, weight, mask
+
+
+class HDF5DictDatasetRandomHeightmap(HDF5DictDatasetRandom):
+    """Temporary dataloader for loading heightmap instead of rgb/depth for testing."""
+
+    def __init__(self, file_path: str, min_idx=0, max_idx=None, total_samples=120000, proprioceptive_keys: List[str] = ['angle_diff', 'distance', 'heading']):
+        super().__init__(file_path, min_idx, max_idx, total_samples, proprioceptive_keys)
+
+    def _extract_obs_single(self, obs_group, timestep):
+        """Extract observations for a single timestep, using heightmap."""
+        # Process heightmap
+        # Assuming 'height_scan' is the key for heightmap data in the HDF5 file.
+        heightmap = torch.from_numpy(
+            obs_group['height_scan'][timestep]).to(self.device).float()
+
+        # Ensure heightmap has a channel dimension, (C, H, W)
+        if len(heightmap.shape) == 2:  # (H, W)
+            heightmap = heightmap.unsqueeze(0)  # -> (1, H, W)
+        # (H, W, 1)
+        elif len(heightmap.shape) == 3 and heightmap.shape[2] == 1:
+            heightmap = heightmap.permute(2, 0, 1)  # -> (1, H, W)
+
+        # Preprocess heightmap: handle NaNs and clamp values to a reasonable range
+        heightmap = torch.nan_to_num(heightmap, nan=0.0)
+        # Example range, adjust if needed
+        heightmap = torch.clamp(heightmap, min=-5.0, max=5.0)
+
+        # Process proprioceptive data
+        proprio_tensors = [torch.from_numpy(np.atleast_1d(obs_group[key][timestep])).to(self.device).float()
+                           for key in self.proprioceptive_keys]
+        proprioceptive = torch.cat(proprio_tensors, dim=0)
+
+        obs_dict = {
+            "proprioceptive": proprioceptive,
+            "image": heightmap,  # Use 'image' key for compatibility with the rest of the pipeline
+        }
+
+        return obs_dict
