@@ -12,6 +12,7 @@ from common import (
     count_parameters,
     load_json_config,
     run_eval_after_train,
+    save_export_config,
 )
 
 
@@ -53,6 +54,7 @@ def main() -> None:
         device=args.device,
     )
     checkpoint_dir = checkpoint_dir_from_wandb()
+    save_export_config(checkpoint_dir, "feedforward", args.actor_factory, actor_config)
 
     dataset = HDF5DictDatasetRandom(
         args.dataset,

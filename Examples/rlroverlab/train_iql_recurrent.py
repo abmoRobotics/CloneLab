@@ -12,6 +12,7 @@ from common import (
     image_channels_for_mode,
     load_json_config,
     run_eval_after_train,
+    save_export_config,
 )
 
 
@@ -84,6 +85,7 @@ def main() -> None:
         **iql_config,
     )
     checkpoint_dir = checkpoint_dir_from_wandb()
+    save_export_config(checkpoint_dir, "recurrent", args.actor_factory, actor_config)
 
     dataset = HDF5RandomSequenceGRUDataset(
         args.dataset,

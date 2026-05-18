@@ -13,6 +13,7 @@ from common import (
     count_parameters,
     load_json_config,
     run_eval_after_train,
+    save_export_config,
 )
 
 
@@ -76,6 +77,7 @@ def main() -> None:
     }
     agent = IQL(actor_policy=actor, value_policy=value, critic_policy=critic, cfg=iql_config, **iql_config)
     checkpoint_dir = checkpoint_dir_from_wandb()
+    save_export_config(checkpoint_dir, "feedforward", args.actor_factory, actor_config)
 
     dataset = HDF5DictDatasetRandom(
         args.dataset,

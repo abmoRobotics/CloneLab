@@ -105,6 +105,26 @@ def checkpoint_dir_from_wandb() -> Path:
     return Path("runs") / wandb.run.project / wandb.run.id / "checkpoints"
 
 
+def save_export_config(
+    checkpoint_dir: Path,
+    policy_type: str,
+    actor_factory: str,
+    actor_config: dict[str, Any],
+    checkpoint_name: str = "final_model.pt",
+) -> Path:
+    from CloneRL.export.policy import write_export_config
+
+    path = write_export_config(
+        checkpoint_dir=checkpoint_dir,
+        policy_type=policy_type,
+        model_factory=actor_factory,
+        model_config=actor_config,
+        checkpoint_name=checkpoint_name,
+    )
+    print(f"[INFO] Wrote export config: {path}")
+    return path
+
+
 def add_dataset_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dataset", type=str, required=True, help="Training HDF5 dataset.")
     parser.add_argument("--val_dataset", type=str, default=None, help="Validation HDF5 dataset. Defaults to --dataset.")
