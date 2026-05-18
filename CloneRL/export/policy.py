@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import importlib
 import json
 from pathlib import Path
 from typing import Any
 
 import torch
 import torch.nn as nn
+
+from CloneRL.models.factory import load_model_factory
 
 
 EXPORT_CONFIG_NAME = "export_config.json"
@@ -51,7 +52,7 @@ def load_actor(
     checkpoint_name: str | None = None,
 ):
     model_config = export_config.get("model_config", {})
-    factory = _load_object(export_config["model_factory"])
+    factory = load_model_factory(export_config["model_factory"])
     model = factory(**model_config).to(device).eval()
     checkpoint_path = resolve_checkpoint(
         checkpoint,
@@ -171,15 +172,6 @@ def _resolve_export_config_path(checkpoint: str | Path, export_config: str | Pat
         tried = ", ".join(str(path) for path in candidates)
         raise FileNotFoundError(f"Could not find export_config.json. Tried: {tried}")
     return resolved
-
-
-def _load_object(spec: str):
-    if ":" in spec:
-        module_name, object_name = spec.split(":", 1)
-    else:
-        module_name, object_name = spec.rsplit(".", 1)
-    module = importlib.import_module(module_name)
-    return getattr(module, object_name)
 
 
 def _torch_load(path: Path, device: str):

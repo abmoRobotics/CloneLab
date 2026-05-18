@@ -49,33 +49,26 @@ class BaseTrainer():
         self.policy: BaseAgent = policy
         # self.dataset = dataset
         dataset.episodic = False
+        loader_kwargs = {
+            "batch_size": self.cfg["batch_size"],
+            "shuffle": self.cfg["shuffle"],
+            "num_workers": self.cfg["num_workers"],
+        }
+        if self.cfg["num_workers"] > 0:
+            loader_kwargs["prefetch_factor"] = self.cfg["prefetch_factor"]
         if dataset.episodic:
             # Print warning
             print("NOTE: Episodic dataset detected, batch size corresponds to number of episodes")
             # assert self.cfg["batch_size"] == 1, "Episodic dataset only supports batch size of 1"
             self.train_ds = DataLoader(dataset,
-                                       batch_size=self.cfg["batch_size"],
-                                       shuffle=False,
-                                       num_workers=self.cfg["num_workers"],
-                                       prefetch_factor=self.cfg["prefetch_factor"],
+                                       **{**loader_kwargs, "shuffle": False},
                                        collate_fn=episodic_collate_fn)
             self.train_val_ds = DataLoader(val_dataset,
-                                           batch_size=self.cfg["batch_size"],
-                                           shuffle=False,
-                                           num_workers=self.cfg["num_workers"],
-                                           prefetch_factor=self.cfg["prefetch_factor"],
+                                           **{**loader_kwargs, "shuffle": False},
                                            collate_fn=episodic_collate_fn)
         else:
-            self.train_ds = DataLoader(dataset,
-                                       batch_size=self.cfg["batch_size"],
-                                       shuffle=self.cfg["shuffle"],
-                                       num_workers=self.cfg["num_workers"],
-                                       prefetch_factor=self.cfg["prefetch_factor"])
-            self.train_val_ds = DataLoader(val_dataset,
-                                           batch_size=self.cfg["batch_size"],
-                                           shuffle=self.cfg["shuffle"],
-                                           num_workers=self.cfg["num_workers"],
-                                           prefetch_factor=self.cfg["prefetch_factor"])
+            self.train_ds = DataLoader(dataset, **loader_kwargs)
+            self.train_val_ds = DataLoader(val_dataset, **loader_kwargs)
 
     def train(self):
         raise NotImplementedError

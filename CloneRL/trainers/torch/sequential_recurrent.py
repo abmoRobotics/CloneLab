@@ -93,25 +93,25 @@ class SequentialRecurrentTrainer(BaseTrainer):
         # Don't call parent __init__ directly, we'll set up dataloaders ourselves
         self.cfg = _cfg
         self.policy = policy
+        loader_kwargs = {
+            "batch_size": self.cfg["batch_size"],
+            "num_workers": self.cfg["num_workers"],
+            "collate_fn": recurrent_collate_fn,
+            "drop_last": True,
+        }
+        if self.cfg["num_workers"] > 0:
+            loader_kwargs["prefetch_factor"] = self.cfg["prefetch_factor"]
         
         # Create dataloaders with recurrent collate function
         self.train_ds = DataLoader(
             dataset,
-            batch_size=self.cfg["batch_size"],
+            **loader_kwargs,
             shuffle=self.cfg["shuffle"],
-            num_workers=self.cfg["num_workers"],
-            prefetch_factor=self.cfg["prefetch_factor"],
-            collate_fn=recurrent_collate_fn,
-            drop_last=True,  # Important for consistent batch sizes with RNNs
         )
         self.train_val_ds = DataLoader(
             val_dataset,
-            batch_size=self.cfg["batch_size"],
+            **loader_kwargs,
             shuffle=False,
-            num_workers=self.cfg["num_workers"],
-            prefetch_factor=self.cfg["prefetch_factor"],
-            collate_fn=recurrent_collate_fn,
-            drop_last=True,
         )
         
         self.policy.initialize()

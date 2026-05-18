@@ -10,10 +10,10 @@ from common import (
     configure_wandb_env,
     count_parameters,
     image_channels_for_mode,
-    load_json_config,
     run_eval_after_train,
     save_export_config,
 )
+from run_config import config_path, load_model_config, parse_args_with_config
 
 
 parser = argparse.ArgumentParser("Train CloneLab recurrent BC on an RLRoverLab HDF5 dataset.")
@@ -33,8 +33,8 @@ parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipp
 parser.add_argument("--lr_scheduler", type=str, default=None, help="Optional LR scheduler: step, cosine, or none.")
 parser.add_argument("--lr_decay_steps", type=int, default=1000, help="Step scheduler decay interval.")
 parser.add_argument("--lr_decay_rate", type=float, default=0.99, help="Step scheduler decay rate.")
-parser.add_argument("--actor_factory", type=str, default="Examples.isaaclab.models_cai:GRUActorGaussian")
-parser.add_argument("--actor_config", type=str, default=None, help="Optional JSON actor config.")
+parser.add_argument("--actor_factory", type=str, default="CloneRL.models.torch:gru_actor_gaussian")
+parser.add_argument("--actor_config", type=str, default=None, help="Optional JSON/YAML actor config.")
 
 
 def main() -> None:
@@ -47,7 +47,7 @@ def main() -> None:
     base_config = dict(RECURRENT_BASE_CONFIG)
     base_config["device"] = args.device
     base_config["image_channels"] = image_channels_for_mode(args.image_mode)
-    actor_config = load_json_config(args.actor_config, {**base_config, "action_dim": 2})
+    actor_config = load_model_config(args.actor_config, {**base_config, "action_dim": 2})
 
     actor = build_module(args.actor_factory, actor_config, args.device)
     print(f"Actor parameters: {count_parameters(actor):,}")
@@ -105,5 +105,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
+    args = parse_args_with_config(
+        parser,
+        default_config=config_path("bc_recurrent.yaml"),
+        required=("dataset",),
+    )
     main()

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import shlex
 import subprocess
@@ -66,31 +65,10 @@ def image_channels_for_mode(image_mode: str) -> int:
     raise ValueError(f"Unsupported image_mode: {image_mode}")
 
 
-def load_json_config(path: str | None, defaults: dict[str, Any]) -> dict[str, Any]:
-    config = dict(defaults)
-    if path is None:
-        return config
-
-    with open(path, encoding="utf-8") as file:
-        user_config = json.load(file)
-    if not isinstance(user_config, dict):
-        raise TypeError(f"Expected JSON object in {path}, got {type(user_config).__name__}")
-    config.update(user_config)
-    return config
-
-
-def load_object(spec: str):
-    if ":" in spec:
-        module_name, object_name = spec.split(":", 1)
-    else:
-        module_name, object_name = spec.rsplit(".", 1)
-    module = __import__(module_name, fromlist=[object_name])
-    return getattr(module, object_name)
-
-
 def build_module(factory_spec: str, config: dict[str, Any], device: str):
-    module = load_object(factory_spec)(**config)
-    return module.to(device)
+    from CloneRL.models.factory import build_model
+
+    return build_model(factory_spec, config, device)
 
 
 def count_parameters(model) -> int:
@@ -126,7 +104,7 @@ def save_export_config(
 
 
 def add_dataset_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--dataset", type=str, required=True, help="Training HDF5 dataset.")
+    parser.add_argument("--dataset", type=str, default=None, help="Training HDF5 dataset.")
     parser.add_argument("--val_dataset", type=str, default=None, help="Validation HDF5 dataset. Defaults to --dataset.")
     parser.add_argument("--min_idx", type=int, default=0, help="Minimum training episode index.")
     parser.add_argument("--max_idx", type=int, default=None, help="Maximum training episode index.")

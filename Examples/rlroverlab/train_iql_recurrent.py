@@ -10,10 +10,10 @@ from common import (
     configure_wandb_env,
     count_parameters,
     image_channels_for_mode,
-    load_json_config,
     run_eval_after_train,
     save_export_config,
 )
+from run_config import config_path, load_model_config, parse_args_with_config
 
 
 parser = argparse.ArgumentParser("Train CloneLab recurrent IQL on an RLRoverLab HDF5 dataset.")
@@ -36,12 +36,12 @@ parser.add_argument("--expectile", type=float, default=0.7, help="IQL expectile.
 parser.add_argument("--temperature", type=float, default=1.0, help="Advantage temperature.")
 parser.add_argument("--target_update_freq", type=int, default=1, help="Target update frequency.")
 parser.add_argument("--grad_clip", type=float, default=5.0, help="Gradient clipping value.")
-parser.add_argument("--actor_factory", type=str, default="Examples.isaaclab.models_cai:GRUActorGaussian")
-parser.add_argument("--critic_factory", type=str, default="Examples.isaaclab.models_cai:GRUTwinQ")
-parser.add_argument("--value_factory", type=str, default="Examples.isaaclab.models_cai:GRUValue")
-parser.add_argument("--actor_config", type=str, default=None, help="Optional JSON actor config.")
-parser.add_argument("--critic_config", type=str, default=None, help="Optional JSON critic config.")
-parser.add_argument("--value_config", type=str, default=None, help="Optional JSON value config.")
+parser.add_argument("--actor_factory", type=str, default="CloneRL.models.torch:gru_actor_gaussian")
+parser.add_argument("--critic_factory", type=str, default="CloneRL.models.torch:gru_twin_q")
+parser.add_argument("--value_factory", type=str, default="CloneRL.models.torch:gru_value")
+parser.add_argument("--actor_config", type=str, default=None, help="Optional JSON/YAML actor config.")
+parser.add_argument("--critic_config", type=str, default=None, help="Optional JSON/YAML critic config.")
+parser.add_argument("--value_config", type=str, default=None, help="Optional JSON/YAML value config.")
 
 
 def main() -> None:
@@ -54,9 +54,9 @@ def main() -> None:
     base_config = dict(RECURRENT_BASE_CONFIG)
     base_config["device"] = args.device
     base_config["image_channels"] = image_channels_for_mode(args.image_mode)
-    actor_config = load_json_config(args.actor_config, {**base_config, "action_dim": 2})
-    critic_config = load_json_config(args.critic_config, {**base_config, "action_dim": 2})
-    value_config = load_json_config(args.value_config, base_config)
+    actor_config = load_model_config(args.actor_config, {**base_config, "action_dim": 2})
+    critic_config = load_model_config(args.critic_config, {**base_config, "action_dim": 2})
+    value_config = load_model_config(args.value_config, base_config)
 
     actor = build_module(args.actor_factory, actor_config, args.device)
     critic = build_module(args.critic_factory, critic_config, args.device)
@@ -127,5 +127,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
+    args = parse_args_with_config(
+        parser,
+        default_config=config_path("iql_recurrent.yaml"),
+        required=("dataset",),
+    )
     main()

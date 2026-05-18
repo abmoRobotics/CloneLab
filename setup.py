@@ -9,6 +9,7 @@ INSTALL_REQUIRES = [
     "gymnasium",
     "wandb",
     "xarray",
+    "PyYAML",
 ]
 
 setup(

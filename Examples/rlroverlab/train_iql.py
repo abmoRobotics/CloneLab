@@ -11,10 +11,10 @@ from common import (
     checkpoint_dir_from_wandb,
     configure_wandb_env,
     count_parameters,
-    load_json_config,
     run_eval_after_train,
     save_export_config,
 )
+from run_config import config_path, load_model_config, parse_args_with_config
 
 
 parser = argparse.ArgumentParser("Train CloneLab IQL on an RLRoverLab HDF5 dataset.")
@@ -30,12 +30,12 @@ parser.add_argument("--tau", type=float, default=0.01, help="Target network upda
 parser.add_argument("--expectile", type=float, default=0.8, help="IQL expectile.")
 parser.add_argument("--temperature", type=float, default=0.0, help="Advantage temperature.")
 parser.add_argument("--target_update_freq", type=int, default=1, help="Target update frequency.")
-parser.add_argument("--actor_factory", type=str, default="Examples.isaaclab.models_cai:actor_gaussian_image")
-parser.add_argument("--critic_factory", type=str, default="Examples.isaaclab.models_cai:TwinQ_image")
-parser.add_argument("--value_factory", type=str, default="Examples.isaaclab.models_cai:v_image")
-parser.add_argument("--actor_config", type=str, default=None, help="Optional JSON actor config.")
-parser.add_argument("--critic_config", type=str, default=None, help="Optional JSON critic config.")
-parser.add_argument("--value_config", type=str, default=None, help="Optional JSON value config.")
+parser.add_argument("--actor_factory", type=str, default="CloneRL.models.torch:actor_gaussian_image")
+parser.add_argument("--critic_factory", type=str, default="CloneRL.models.torch:twin_q_image")
+parser.add_argument("--value_factory", type=str, default="CloneRL.models.torch:v_image")
+parser.add_argument("--actor_config", type=str, default=None, help="Optional JSON/YAML actor config.")
+parser.add_argument("--critic_config", type=str, default=None, help="Optional JSON/YAML critic config.")
+parser.add_argument("--value_config", type=str, default=None, help="Optional JSON/YAML value config.")
 
 
 def main() -> None:
@@ -45,16 +45,16 @@ def main() -> None:
     from CloneRL.dataloader.hdf.hdf_loader import HDF5DictDatasetRandom
     from CloneRL.trainers.torch.sequential import SequentialTrainer
 
-    actor_config = load_json_config(args.actor_config, FEEDFORWARD_ACTOR_CONFIG)
-    critic_config = load_json_config(args.critic_config, FEEDFORWARD_ACTOR_CONFIG)
-    value_config = load_json_config(args.value_config, FEEDFORWARD_VALUE_CONFIG)
-    if args.frame_stacking and args.actor_config is None:
+    actor_config = load_model_config(args.actor_config, FEEDFORWARD_ACTOR_CONFIG)
+    critic_config = load_model_config(args.critic_config, FEEDFORWARD_ACTOR_CONFIG)
+    value_config = load_model_config(args.value_config, FEEDFORWARD_VALUE_CONFIG)
+    if args.frame_stacking:
         actor_config["image_channels"] *= args.num_stacked_frames
         actor_config["depth_channels"] *= args.num_stacked_frames
-    if args.frame_stacking and args.critic_config is None:
+    if args.frame_stacking:
         critic_config["image_channels"] *= args.num_stacked_frames
         critic_config["depth_channels"] *= args.num_stacked_frames
-    if args.frame_stacking and args.value_config is None:
+    if args.frame_stacking:
         value_config["image_channels"] *= args.num_stacked_frames
         value_config["depth_channels"] *= args.num_stacked_frames
 
@@ -119,5 +119,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
+    args = parse_args_with_config(parser, default_config=config_path("iql.yaml"), required=("dataset",))
     main()

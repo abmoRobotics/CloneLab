@@ -10,10 +10,10 @@ from common import (
     checkpoint_dir_from_wandb,
     configure_wandb_env,
     count_parameters,
-    load_json_config,
     run_eval_after_train,
     save_export_config,
 )
+from run_config import config_path, load_model_config, parse_args_with_config
 
 
 parser = argparse.ArgumentParser("Train CloneLab BC on an RLRoverLab HDF5 dataset.")
@@ -27,10 +27,10 @@ parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipp
 parser.add_argument(
     "--actor_factory",
     type=str,
-    default="Examples.isaaclab.models_cai:actor_gaussian_image",
+    default="CloneRL.models.torch:actor_gaussian_image",
     help="Import path for the actor factory.",
 )
-parser.add_argument("--actor_config", type=str, default=None, help="Optional JSON actor config.")
+parser.add_argument("--actor_config", type=str, default=None, help="Optional JSON/YAML actor config.")
 
 
 def main() -> None:
@@ -40,8 +40,8 @@ def main() -> None:
     from CloneRL.dataloader.hdf.hdf_loader import HDF5DictDatasetRandom
     from CloneRL.trainers.torch.sequential import SequentialTrainer
 
-    actor_config = load_json_config(args.actor_config, FEEDFORWARD_ACTOR_CONFIG)
-    if args.frame_stacking and args.actor_config is None:
+    actor_config = load_model_config(args.actor_config, FEEDFORWARD_ACTOR_CONFIG)
+    if args.frame_stacking:
         actor_config["image_channels"] *= args.num_stacked_frames
         actor_config["depth_channels"] *= args.num_stacked_frames
 
@@ -96,5 +96,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
+    args = parse_args_with_config(parser, default_config=config_path("bc.yaml"), required=("dataset",))
     main()
