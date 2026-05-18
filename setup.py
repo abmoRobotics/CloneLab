@@ -1,7 +1,7 @@
 
 import os
 
-from setuptools import setup
+from setuptools import find_packages, setup
 
 INSTALL_REQUIRES = [
     #"skrl==1.1.0",
@@ -35,5 +35,5 @@ setup(
     ],
     license="MIT",
     zip_safe=False,
-    packages=["CloneRL"]
+    packages=find_packages(include=["CloneRL", "CloneRL.*"])
 )
