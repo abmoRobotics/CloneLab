@@ -1,7 +1,5 @@
 
-import os
-
-from setuptools import find_packages, setup
+from setuptools import find_namespace_packages, setup
 
 INSTALL_REQUIRES = [
     #"skrl==1.1.0",
@@ -35,5 +33,9 @@ setup(
     ],
     license="MIT",
     zip_safe=False,
-    packages=find_packages(include=["CloneRL", "CloneRL.*"])
+    packages=find_namespace_packages(include=["CloneRL", "CloneRL.*"]),
+    extras_require={
+        "export": ["onnx"],
+        "tensorrt": ["tensorrt"],
+    },
 )
