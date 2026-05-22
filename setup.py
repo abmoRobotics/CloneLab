@@ -5,11 +5,15 @@ INSTALL_REQUIRES = [
     #"skrl==1.1.0",
     "skrl",
     "torch",
+    "torchvision",
     "numpy",
     "gymnasium",
     "wandb",
     "xarray",
     "PyYAML",
+    "Pillow",
+    "nvidia-nvimgcodec-cu12[nvjpeg,nvjpeg2k]",
+    "nvidia-nvtiff-cu12",
 ]
 
 setup(

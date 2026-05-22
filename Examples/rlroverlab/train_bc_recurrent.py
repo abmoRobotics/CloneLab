@@ -6,6 +6,7 @@ from common import (
     add_eval_args,
     add_trainer_args,
     build_module,
+    build_recurrent_hdf5_dataset,
     checkpoint_dir_from_wandb,
     configure_wandb_env,
     count_parameters,
@@ -41,7 +42,6 @@ def main() -> None:
     configure_wandb_env(args)
 
     from CloneRL.algorithms.torch.imitation_learning.bc import BehaviourCloningRNN
-    from CloneRL.dataloader.hdf import HDF5RandomSequenceGRUDataset
     from CloneRL.trainers.torch.sequential_recurrent import SequentialRecurrentTrainer
 
     base_config = dict(RECURRENT_BASE_CONFIG)
@@ -65,23 +65,21 @@ def main() -> None:
     checkpoint_dir = checkpoint_dir_from_wandb()
     save_export_config(checkpoint_dir, "recurrent", args.actor_factory, actor_config)
 
-    dataset = HDF5RandomSequenceGRUDataset(
+    dataset = build_recurrent_hdf5_dataset(
         args.dataset,
-        sequence_length=args.sequence_length,
+        args,
+        actor_config,
         min_idx=args.min_idx,
         max_idx=args.max_idx,
         total_samples=args.total_samples,
-        proprioceptive_keys=args.proprioceptive_keys,
-        image_mode=args.image_mode,
     )
-    val_dataset = HDF5RandomSequenceGRUDataset(
+    val_dataset = build_recurrent_hdf5_dataset(
         args.val_dataset or args.dataset,
-        sequence_length=args.sequence_length,
+        args,
+        actor_config,
         min_idx=args.val_min_idx,
         max_idx=args.val_max_idx,
         total_samples=args.val_samples,
-        proprioceptive_keys=args.proprioceptive_keys,
-        image_mode=args.image_mode,
     )
 
     trainer = SequentialRecurrentTrainer(

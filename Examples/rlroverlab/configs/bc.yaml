@@ -1,4 +1,6 @@
 dataset:
+  dataset_format: auto
+  compressed_decode_backend: cuda
   path:
   val_path:
   min_idx: 0

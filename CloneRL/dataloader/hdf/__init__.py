@@ -8,3 +8,9 @@ from CloneRL.dataloader.hdf.hdf_loader_gru import (
     HDF5RandomSequenceGRUDataset,
     HDF5SlidingWindowGRUDataset,
 )
+
+from CloneRL.dataloader.hdf.rlroverlab_compressed_rgbd import (
+    RLRoverLabCompressedRGBDDatasetRandom,
+    RLRoverLabCompressedRGBDRandomSequenceDataset,
+    is_rlroverlab_compressed_rgbd,
+)

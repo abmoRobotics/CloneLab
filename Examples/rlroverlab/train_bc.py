@@ -7,6 +7,7 @@ from common import (
     add_frame_stack_args,
     add_trainer_args,
     build_module,
+    build_feedforward_hdf5_dataset,
     checkpoint_dir_from_wandb,
     configure_wandb_env,
     count_parameters,
@@ -37,7 +38,6 @@ def main() -> None:
     configure_wandb_env(args)
 
     from CloneRL.algorithms.torch.imitation_learning.bc import BehaviourCloning
-    from CloneRL.dataloader.hdf.hdf_loader import HDF5DictDatasetRandom
     from CloneRL.trainers.torch.sequential import SequentialTrainer
 
     actor_config = load_model_config(args.actor_config, FEEDFORWARD_ACTOR_CONFIG)
@@ -56,25 +56,21 @@ def main() -> None:
     checkpoint_dir = checkpoint_dir_from_wandb()
     save_export_config(checkpoint_dir, "feedforward", args.actor_factory, actor_config)
 
-    dataset = HDF5DictDatasetRandom(
+    dataset = build_feedforward_hdf5_dataset(
         args.dataset,
+        args,
+        actor_config,
         min_idx=args.min_idx,
         max_idx=args.max_idx,
         total_samples=args.total_samples,
-        proprioceptive_keys=args.proprioceptive_keys,
-        use_frame_stacking=args.frame_stacking,
-        frame_stack_stride=args.frame_stack_stride,
-        num_stacked_frames=args.num_stacked_frames,
     )
-    val_dataset = HDF5DictDatasetRandom(
+    val_dataset = build_feedforward_hdf5_dataset(
         args.val_dataset or args.dataset,
+        args,
+        actor_config,
         min_idx=args.val_min_idx,
         max_idx=args.val_max_idx,
         total_samples=args.val_samples,
-        proprioceptive_keys=args.proprioceptive_keys,
-        use_frame_stacking=args.frame_stacking,
-        frame_stack_stride=args.frame_stack_stride,
-        num_stacked_frames=args.num_stacked_frames,
     )
 
     trainer = SequentialTrainer(

@@ -106,6 +106,20 @@ def save_export_config(
 def add_dataset_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dataset", type=str, default=None, help="Training HDF5 dataset.")
     parser.add_argument("--val_dataset", type=str, default=None, help="Validation HDF5 dataset. Defaults to --dataset.")
+    parser.add_argument(
+        "--dataset_format",
+        type=str,
+        default="auto",
+        choices=("auto", "legacy", "compressed_rgbd"),
+        help="HDF5 layout. 'auto' uses the compressed RLRoverLab loader when the v2 schema is detected.",
+    )
+    parser.add_argument(
+        "--compressed_decode_backend",
+        type=str,
+        default="cuda",
+        choices=("cuda", "pillow"),
+        help="Decoder for compressed RGB-D files. 'cuda' uses nvJPEG/nvJPEG2000; 'pillow' is a CPU debug fallback.",
+    )
     parser.add_argument("--min_idx", type=int, default=0, help="Minimum training episode index.")
     parser.add_argument("--max_idx", type=int, default=None, help="Maximum training episode index.")
     parser.add_argument("--val_min_idx", type=int, default=0, help="Minimum validation episode index.")
@@ -118,6 +132,111 @@ def add_dataset_args(parser: argparse.ArgumentParser) -> None:
         default=["angle_diff", "distance", "heading"],
         help="Observation keys concatenated into CloneLab proprioceptive state.",
     )
+
+
+def resolve_dataset_format(file_path: str, requested_format: str = "auto") -> str:
+    if requested_format == "legacy":
+        return "legacy"
+    if requested_format not in {"auto", "compressed_rgbd"}:
+        raise ValueError(f"Unsupported dataset_format: {requested_format}")
+
+    from CloneRL.dataloader.hdf import is_rlroverlab_compressed_rgbd
+
+    is_compressed = is_rlroverlab_compressed_rgbd(file_path)
+    if requested_format == "compressed_rgbd" and not is_compressed:
+        raise ValueError(f"--dataset_format compressed_rgbd was requested, but {file_path} is not a compressed v2 file.")
+    return "compressed_rgbd" if is_compressed else "legacy"
+
+
+def build_feedforward_hdf5_dataset(
+    file_path: str,
+    args: argparse.Namespace,
+    model_config: dict[str, Any],
+    *,
+    min_idx: int,
+    max_idx: int | None,
+    total_samples: int,
+):
+    dataset_format = resolve_dataset_format(file_path, getattr(args, "dataset_format", "auto"))
+    if dataset_format == "compressed_rgbd":
+        from CloneRL.dataloader.hdf import RLRoverLabCompressedRGBDDatasetRandom
+
+        _configure_compressed_decode_workers(args)
+        print(f"[INFO] Loading compressed RLRoverLab RGB-D dataset: {file_path}")
+        return RLRoverLabCompressedRGBDDatasetRandom(
+            file_path,
+            min_idx=min_idx,
+            max_idx=max_idx,
+            total_samples=total_samples,
+            proprioceptive_keys=args.proprioceptive_keys,
+            image_size=model_config.get("image_input_dim") or model_config.get("image_size"),
+            image_mode=getattr(args, "image_mode", "rgb"),
+            use_frame_stacking=getattr(args, "frame_stacking", False),
+            frame_stack_stride=getattr(args, "frame_stack_stride", 3),
+            num_stacked_frames=getattr(args, "num_stacked_frames", 3),
+            device=args.device,
+            decode_backend=args.compressed_decode_backend,
+        )
+
+    from CloneRL.dataloader.hdf.hdf_loader import HDF5DictDatasetRandom
+
+    return HDF5DictDatasetRandom(
+        file_path,
+        min_idx=min_idx,
+        max_idx=max_idx,
+        total_samples=total_samples,
+        proprioceptive_keys=args.proprioceptive_keys,
+        use_frame_stacking=getattr(args, "frame_stacking", False),
+        frame_stack_stride=getattr(args, "frame_stack_stride", 3),
+        num_stacked_frames=getattr(args, "num_stacked_frames", 3),
+    )
+
+
+def build_recurrent_hdf5_dataset(
+    file_path: str,
+    args: argparse.Namespace,
+    model_config: dict[str, Any],
+    *,
+    min_idx: int,
+    max_idx: int | None,
+    total_samples: int,
+):
+    dataset_format = resolve_dataset_format(file_path, getattr(args, "dataset_format", "auto"))
+    if dataset_format == "compressed_rgbd":
+        from CloneRL.dataloader.hdf import RLRoverLabCompressedRGBDRandomSequenceDataset
+
+        _configure_compressed_decode_workers(args)
+        print(f"[INFO] Loading compressed RLRoverLab RGB-D sequence dataset: {file_path}")
+        return RLRoverLabCompressedRGBDRandomSequenceDataset(
+            file_path,
+            sequence_length=args.sequence_length,
+            min_idx=min_idx,
+            max_idx=max_idx,
+            total_samples=total_samples,
+            proprioceptive_keys=args.proprioceptive_keys,
+            image_size=model_config.get("image_size") or model_config.get("image_input_dim"),
+            image_mode=args.image_mode,
+            device=args.device,
+            decode_backend=args.compressed_decode_backend,
+        )
+
+    from CloneRL.dataloader.hdf import HDF5RandomSequenceGRUDataset
+
+    return HDF5RandomSequenceGRUDataset(
+        file_path,
+        sequence_length=args.sequence_length,
+        min_idx=min_idx,
+        max_idx=max_idx,
+        total_samples=total_samples,
+        proprioceptive_keys=args.proprioceptive_keys,
+        image_mode=args.image_mode,
+    )
+
+
+def _configure_compressed_decode_workers(args: argparse.Namespace) -> None:
+    if args.compressed_decode_backend == "cuda" and getattr(args, "num_workers", 0) != 0:
+        print("[INFO] CUDA compressed RGB-D decode runs in the main process; setting num_workers=0.")
+        args.num_workers = 0
 
 
 def add_trainer_args(parser: argparse.ArgumentParser, batch_size: int, epochs: int) -> None:
