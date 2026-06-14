@@ -110,8 +110,11 @@ def add_dataset_args(parser: argparse.ArgumentParser) -> None:
         "--dataset_format",
         type=str,
         default="auto",
-        choices=("auto", "legacy", "compressed_rgbd"),
-        help="HDF5 layout. 'auto' uses the compressed RLRoverLab loader when the v2 schema is detected.",
+        choices=("auto", "legacy", "compressed_rgbd", "dino_da"),
+        help=(
+            "HDF5 layout. 'auto' uses the compressed RLRoverLab loader or the cached DINO/DA loader "
+            "when those schemas are detected."
+        ),
     )
     parser.add_argument(
         "--compressed_decode_backend",
@@ -137,14 +140,22 @@ def add_dataset_args(parser: argparse.ArgumentParser) -> None:
 def resolve_dataset_format(file_path: str, requested_format: str = "auto") -> str:
     if requested_format == "legacy":
         return "legacy"
-    if requested_format not in {"auto", "compressed_rgbd"}:
+    if requested_format not in {"auto", "compressed_rgbd", "dino_da"}:
         raise ValueError(f"Unsupported dataset_format: {requested_format}")
 
     from CloneRL.dataloader.hdf import is_rlroverlab_compressed_rgbd
+    from CloneRL.dataloader.hdf import is_rlroverlab_dino_da_features
 
     is_compressed = is_rlroverlab_compressed_rgbd(file_path)
+    is_dino_da = is_rlroverlab_dino_da_features(file_path)
     if requested_format == "compressed_rgbd" and not is_compressed:
         raise ValueError(f"--dataset_format compressed_rgbd was requested, but {file_path} is not a compressed v2 file.")
+    if requested_format == "dino_da" and not is_dino_da:
+        raise ValueError(f"--dataset_format dino_da was requested, but {file_path} is not a cached DINO/DA file.")
+    if requested_format == "dino_da":
+        return "dino_da"
+    if is_dino_da:
+        return "dino_da"
     return "compressed_rgbd" if is_compressed else "legacy"
 
 
@@ -158,6 +169,8 @@ def build_feedforward_hdf5_dataset(
     total_samples: int,
 ):
     dataset_format = resolve_dataset_format(file_path, getattr(args, "dataset_format", "auto"))
+    if dataset_format == "dino_da":
+        raise ValueError("Cached DINO/DA datasets are only supported by recurrent BC training for now.")
     if dataset_format == "compressed_rgbd":
         from CloneRL.dataloader.hdf import RLRoverLabCompressedRGBDDatasetRandom
 
@@ -202,6 +215,19 @@ def build_recurrent_hdf5_dataset(
     total_samples: int,
 ):
     dataset_format = resolve_dataset_format(file_path, getattr(args, "dataset_format", "auto"))
+    if dataset_format == "dino_da":
+        from CloneRL.dataloader.hdf import RLRoverLabDinoDARandomSequenceDataset
+
+        print(f"[INFO] Loading cached DINO/DA sequence dataset: {file_path}")
+        return RLRoverLabDinoDARandomSequenceDataset(
+            file_path,
+            sequence_length=args.sequence_length,
+            min_idx=min_idx,
+            max_idx=max_idx,
+            total_samples=total_samples,
+            proprioceptive_keys=args.proprioceptive_keys,
+        )
+
     if dataset_format == "compressed_rgbd":
         from CloneRL.dataloader.hdf import RLRoverLabCompressedRGBDRandomSequenceDataset
 

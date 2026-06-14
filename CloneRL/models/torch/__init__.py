@@ -4,9 +4,11 @@ from CloneRL.models.torch.feedforward import (
     ImageValue,
     TwinImageQ,
 )
+from CloneRL.models.torch.dino_da_recurrent import DinoDABCRecurrentPolicy
 from CloneRL.models.torch.recurrent import GRUActorGaussian, GRUQNetwork, GRUTwinQ, GRUValue
 
 actor_gaussian_image = GaussianImageActor
+dino_da_bc_rnn_policy = DinoDABCRecurrentPolicy
 v_image = ImageValue
 q_image = ImageQ
 twin_q_image = TwinImageQ
@@ -20,11 +22,13 @@ __all__ = [
     "ImageQ",
     "ImageValue",
     "TwinImageQ",
+    "DinoDABCRecurrentPolicy",
     "GRUActorGaussian",
     "GRUQNetwork",
     "GRUTwinQ",
     "GRUValue",
     "actor_gaussian_image",
+    "dino_da_bc_rnn_policy",
     "q_image",
     "twin_q_image",
     "TwinQ_image",

@@ -1,0 +1,66 @@
+dataset:
+  dataset_format: dino_da
+  path: datasets/rover_dino_da3_512x288_400k.hdf5
+  val_path:
+  min_idx: 100
+  max_idx:
+  val_min_idx: 0
+  val_max_idx: 100
+  total_samples: 240000
+  val_samples: 10000
+  proprioceptive_keys: [distance, heading, angle_diff]
+
+trainer:
+  batch_size: 32
+  epochs: 20
+  num_workers: 2
+  prefetch_factor: 2
+  save_freq: 2
+  validation_freq: 1
+  log_freq: 100
+  device: cuda:0
+  sequence_length: 8
+  image_mode: none
+
+wandb:
+  project:
+  mode:
+
+eval:
+  eval_after_train: false
+  eval_task: AAURoverEnvRGBDRaw-v0
+  eval_steps: 1000
+  eval_num_envs:
+  eval_checkpoint_name: best_model.pt
+  eval_metrics_out:
+  eval_recurrent: true
+
+algorithm:
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  lr_scheduler:
+  lr_decay_steps: 1000
+  lr_decay_rate: 0.99
+
+models:
+  actor:
+    factory: CloneRL.models.torch:dino_da_bc_rnn_policy
+    config:
+      dino_token_count: 577
+      dino_dim: 384
+      dino_proj_dim: 192
+      depth_channels: 1
+      depth_height: 72
+      depth_width: 128
+      depth_token_dim: 64
+      visual_token_dim: 256
+      visual_dim: 512
+      proprioception_channels: 3
+      action_dim: 2
+      gru_hidden_size: 512
+      gru_num_layers: 2
+      num_queries: 8
+      num_heads: 4
+      num_pool_blocks: 2
+      dropout: 0.1
