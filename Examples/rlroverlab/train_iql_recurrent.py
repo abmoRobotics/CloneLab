@@ -86,6 +86,7 @@ def main() -> None:
     )
     checkpoint_dir = checkpoint_dir_from_wandb()
     save_export_config(checkpoint_dir, "recurrent", args.actor_factory, actor_config)
+    args.return_next_obs = True
 
     dataset = build_recurrent_hdf5_dataset(
         args.dataset,

@@ -101,6 +101,9 @@ class SequentialRecurrentTrainer(BaseTrainer):
         }
         if self.cfg["num_workers"] > 0:
             loader_kwargs["prefetch_factor"] = self.cfg["prefetch_factor"]
+            loader_kwargs["persistent_workers"] = self.cfg.get("persistent_workers", True)
+        if "cuda" in str(getattr(self.policy, "device", "")):
+            loader_kwargs["pin_memory"] = self.cfg.get("pin_memory", True)
         
         # Create dataloaders with recurrent collate function
         self.train_ds = DataLoader(

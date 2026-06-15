@@ -14,11 +14,28 @@ SCHEMA_NAME = "rlroverlab.offline_dino_da3_v1"
 
 def is_rlroverlab_dino_da_features(file_path: str | Path) -> bool:
     """Return True when an HDF5 file contains precomputed DINO/DA3 observations."""
+    ok, _ = rlroverlab_dino_da_feature_status(file_path)
+    return ok
+
+
+def rlroverlab_dino_da_feature_status(file_path: str | Path) -> Tuple[bool, str]:
+    """Return whether an HDF5 file is a complete cached DINO/DA3 dataset, plus a diagnostic."""
     try:
         with h5py.File(file_path, "r") as file:
-            return file.attrs.get("schema_name") == SCHEMA_NAME
-    except OSError:
-        return False
+            schema = file.attrs.get("schema_name")
+            if schema != SCHEMA_NAME:
+                return False, f"schema_name={schema!r}, expected {SCHEMA_NAME!r}"
+            writer_status = file.attrs.get("writer_status")
+            if writer_status is not None and writer_status != "complete":
+                return False, f"writer_status={writer_status!r}"
+            transitions = int(file.attrs.get("total_transitions", len(file.get("transitions/actions", ()))))
+            if transitions <= 0:
+                return False, f"total_transitions={transitions}"
+            return True, f"complete DINO/DA3 dataset with {transitions} transitions"
+    except BlockingIOError as exc:
+        return False, f"locked by another process: {exc}"
+    except OSError as exc:
+        return False, f"not readable as HDF5: {exc}"
 
 
 class RLRoverLabDinoDARandomSequenceDataset(Dataset):
@@ -33,6 +50,8 @@ class RLRoverLabDinoDARandomSequenceDataset(Dataset):
         total_samples: int = 100000,
         proprioceptive_keys: List[str] = ["distance", "heading", "angle_diff"],
         return_hidden_reset_mask: bool = False,
+        return_next_obs: bool = False,
+        expected_da_shape: Optional[Tuple[int, int, int]] = None,
     ):
         self.file_path = str(file_path)
         self.sequence_length = int(sequence_length)
@@ -41,6 +60,9 @@ class RLRoverLabDinoDARandomSequenceDataset(Dataset):
         self.total_samples = int(total_samples)
         self.proprioceptive_keys = list(proprioceptive_keys)
         self.return_hidden_reset_mask = bool(return_hidden_reset_mask)
+        self.return_next_obs = bool(return_next_obs)
+        self.expected_da_shape = expected_da_shape
+        self._file: Optional[h5py.File] = None
 
         if self.sequence_length <= 0:
             raise ValueError("sequence_length must be positive.")
@@ -67,18 +89,23 @@ class RLRoverLabDinoDARandomSequenceDataset(Dataset):
 
     def __getitem__(self, idx: int):
         episode, start_idx = self.valid_sequences[np.random.randint(0, len(self.valid_sequences))]
-        end_idx = start_idx + self.sequence_length
         transition_start = int(self.transition_offsets[episode]) + start_idx
         obs_start = int(self.obs_offsets[episode]) + start_idx
 
-        with h5py.File(self.file_path, "r") as file:
-            transition_slice = slice(transition_start, transition_start + self.sequence_length)
-            obs_slice = slice(obs_start, obs_start + self.sequence_length)
-            next_obs_slice = slice(obs_start + 1, obs_start + self.sequence_length + 1)
+        file = self._get_file()
+        transition_slice = slice(transition_start, transition_start + self.sequence_length)
+        obs_slice = slice(obs_start, obs_start + self.sequence_length)
 
-            actions, rewards, dones = self._read_transition_arrays(file, transition_slice)
-            obs = self._read_observation_sequence(file, obs_slice)
+        actions, rewards, dones = self._read_transition_arrays(file, transition_slice)
+        obs = self._read_observation_sequence(file, obs_slice)
+
+        if self.return_next_obs:
+            next_obs_slice = slice(obs_start + 1, obs_start + self.sequence_length + 1)
             next_obs = self._read_observation_sequence(file, next_obs_slice)
+        else:
+            # BC-RNN does not use next_state; avoid a second large random HDF5 read
+            # and a duplicate DINO-token transfer to the GPU.
+            next_obs = {}
 
         weights = torch.ones_like(rewards)
         masks = torch.ones_like(rewards)
@@ -92,10 +119,31 @@ class RLRoverLabDinoDARandomSequenceDataset(Dataset):
                 hidden_reset[timestep + 1] = 1.0
         return obs, actions, rewards, next_obs, dones, weights, masks, hidden_reset
 
+    def _get_file(self) -> h5py.File:
+        if self._file is None:
+            self._file = h5py.File(self.file_path, "r")
+        return self._file
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_file"] = None
+        return state
+
+    def __del__(self):
+        file = getattr(self, "_file", None)
+        if file is not None:
+            try:
+                file.close()
+            except Exception:
+                pass
+
     def _validate_file(self, file: h5py.File) -> None:
         schema = file.attrs.get("schema_name")
         if schema != SCHEMA_NAME:
             raise ValueError(f"Expected precomputed DINO/DA3 schema {SCHEMA_NAME!r}, got {schema!r}.")
+        writer_status = file.attrs.get("writer_status")
+        if writer_status is not None and writer_status != "complete":
+            raise ValueError(f"Precomputed DINO/DA3 dataset is not complete: writer_status={writer_status!r}.")
 
         required_paths = (
             "observations/dino_tokens_t",
@@ -118,8 +166,11 @@ class RLRoverLabDinoDARandomSequenceDataset(Dataset):
         da_shape = file["observations/da_depth_t"].shape[1:]
         if dino_shape != (577, 384):
             raise ValueError(f"Expected observations/dino_tokens_t shape [N, 577, 384], got [N, {dino_shape}].")
-        if da_shape != (1, 72, 128):
-            raise ValueError(f"Expected observations/da_depth_t shape [N, 1, 72, 128], got [N, {da_shape}].")
+        expected_da_shape = self.expected_da_shape or da_shape
+        if tuple(da_shape) != tuple(expected_da_shape):
+            raise ValueError(
+                f"Expected observations/da_depth_t shape [N, {tuple(expected_da_shape)}], got [N, {da_shape}]."
+            )
 
     def _sequence_starts(self) -> List[Tuple[int, int]]:
         starts: List[Tuple[int, int]] = []
@@ -136,7 +187,11 @@ class RLRoverLabDinoDARandomSequenceDataset(Dataset):
             )
         return starts
 
-    def _read_transition_arrays(self, file: h5py.File, transition_slice: slice) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _read_transition_arrays(
+        self,
+        file: h5py.File,
+        transition_slice: slice,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         actions = torch.from_numpy(np.asarray(file["transitions/actions"][transition_slice])).float()
         rewards = torch.from_numpy(np.asarray(file["transitions/rewards"][transition_slice])).float()
         if "transitions/dones" in file:
@@ -164,6 +219,36 @@ class RLRoverLabDinoDARandomSequenceDataset(Dataset):
             "da_depth": torch.from_numpy(np.asarray(file["observations/da_depth_t"][obs_slice])),
             "proprioceptive": proprioceptive,
         }
+
+
+class RLRoverLabDinoDAMultiFileRandomSequenceDataset(Dataset):
+    """Random sequence loader over multiple cached DINO/DA3 HDF5 files.
+
+    This is used for DAgger aggregation: keep the original large teacher dataset
+    in place, add small student-visited shards, and sample from the union without
+    materializing a second huge HDF5 file.
+    """
+
+    def __init__(
+        self,
+        datasets: List[RLRoverLabDinoDARandomSequenceDataset],
+        total_samples: int = 100000,
+    ):
+        if not datasets:
+            raise ValueError("At least one DINO/DA dataset is required.")
+        self.datasets = list(datasets)
+        self.total_samples = int(total_samples)
+        weights = np.asarray([len(dataset.valid_sequences) for dataset in self.datasets], dtype=np.float64)
+        if np.any(weights <= 0):
+            raise ValueError("All DINO/DA datasets must contain at least one valid sequence.")
+        self.sample_probabilities = weights / weights.sum()
+
+    def __len__(self) -> int:
+        return self.total_samples
+
+    def __getitem__(self, idx: int):
+        dataset_index = int(np.random.choice(len(self.datasets), p=self.sample_probabilities))
+        return self.datasets[dataset_index][idx]
 
 
 def _ensure_column_tensor(tensor: torch.Tensor) -> torch.Tensor:

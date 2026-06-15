@@ -16,6 +16,13 @@ from CloneRL.dataloader.hdf.rlroverlab_compressed_rgbd import (
 )
 
 from CloneRL.dataloader.hdf.rlroverlab_dino_da import (
+    RLRoverLabDinoDAMultiFileRandomSequenceDataset,
     RLRoverLabDinoDARandomSequenceDataset,
     is_rlroverlab_dino_da_features,
+    rlroverlab_dino_da_feature_status,
+)
+
+from CloneRL.dataloader.hdf.rlroverlab_risk_dino_da import (
+    RLRoverLabRiskDinoDAMultiFileRandomSequenceDataset,
+    RLRoverLabRiskDinoDARandomSequenceDataset,
 )

@@ -12,24 +12,26 @@ dataset:
 
 trainer:
   batch_size: 32
-  epochs: 20
-  num_workers: 2
+  epochs: 10
+  num_workers: 8
   prefetch_factor: 2
+  persistent_workers: true
+  pin_memory: true
   save_freq: 2
   validation_freq: 1
   log_freq: 100
   device: cuda:0
-  sequence_length: 8
+  sequence_length: 32
   image_mode: none
 
 wandb:
-  project:
-  mode:
+  project: dino-da-bc-rnn-s32
+  mode: offline
 
 eval:
   eval_after_train: false
-  eval_task: AAURoverEnvRGBDRaw-v0
-  eval_steps: 1000
+  eval_task: AAURoverEnvRGBDRawHD720-v0
+  eval_steps: 10000
   eval_num_envs:
   eval_checkpoint_name: best_model.pt
   eval_metrics_out:

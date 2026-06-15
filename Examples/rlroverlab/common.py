@@ -104,7 +104,15 @@ def save_export_config(
 
 
 def add_dataset_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--dataset", type=str, default=None, help="Training HDF5 dataset.")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help=(
+            "Training HDF5 dataset. Cached DINO/DA recurrent training also accepts comma-separated "
+            "dataset specs like 'base.hdf5@100:,dagger1.hdf5@0:'."
+        ),
+    )
     parser.add_argument("--val_dataset", type=str, default=None, help="Validation HDF5 dataset. Defaults to --dataset.")
     parser.add_argument(
         "--dataset_format",
@@ -157,6 +165,32 @@ def resolve_dataset_format(file_path: str, requested_format: str = "auto") -> st
     if is_dino_da:
         return "dino_da"
     return "compressed_rgbd" if is_compressed else "legacy"
+
+
+def _parse_dataset_specs(file_path: str) -> list[tuple[str, int | None, int | None, bool]]:
+    specs: list[tuple[str, int | None, int | None, bool]] = []
+    for raw_spec in str(file_path).split(","):
+        raw_spec = raw_spec.strip()
+        if not raw_spec:
+            continue
+
+        has_override = "@" in raw_spec
+        if has_override:
+            path, range_spec = raw_spec.rsplit("@", 1)
+            if ":" in range_spec:
+                min_text, max_text = range_spec.split(":", 1)
+            else:
+                min_text, max_text = range_spec, ""
+            spec_min = int(min_text) if min_text else None
+            spec_max = int(max_text) if max_text else None
+        else:
+            path = raw_spec
+            spec_min = None
+            spec_max = None
+        specs.append((path, spec_min, spec_max, has_override))
+    if not specs:
+        raise ValueError("No dataset paths were provided.")
+    return specs
 
 
 def build_feedforward_hdf5_dataset(
@@ -214,6 +248,46 @@ def build_recurrent_hdf5_dataset(
     max_idx: int | None,
     total_samples: int,
 ):
+    dataset_specs = _parse_dataset_specs(file_path)
+    if len(dataset_specs) > 1 or any(spec[3] for spec in dataset_specs):
+        requested_format = getattr(args, "dataset_format", "auto")
+        if requested_format not in {"auto", "dino_da"}:
+            raise ValueError("Dataset spec aggregation is only supported for cached DINO/DA recurrent datasets.")
+        from CloneRL.dataloader.hdf import (
+            RLRoverLabDinoDAMultiFileRandomSequenceDataset,
+            RLRoverLabDinoDARandomSequenceDataset,
+            is_rlroverlab_dino_da_features,
+            rlroverlab_dino_da_feature_status,
+        )
+
+        datasets = []
+        expected_da_shape = (
+            int(model_config.get("depth_channels", 1)),
+            int(model_config.get("depth_height", 72)),
+            int(model_config.get("depth_width", 128)),
+        )
+        for path, spec_min, spec_max, has_override in dataset_specs:
+            if not is_rlroverlab_dino_da_features(path):
+                _, reason = rlroverlab_dino_da_feature_status(path)
+                raise ValueError(f"Aggregated dataset path is not a complete cached DINO/DA file: {path} ({reason})")
+            datasets.append(
+                RLRoverLabDinoDARandomSequenceDataset(
+                    path,
+                    sequence_length=args.sequence_length,
+                    min_idx=min_idx if not has_override else (0 if spec_min is None else spec_min),
+                    max_idx=max_idx if not has_override else spec_max,
+                    total_samples=1,
+                    proprioceptive_keys=args.proprioceptive_keys,
+                    return_next_obs=getattr(args, "return_next_obs", False),
+                    expected_da_shape=expected_da_shape,
+                )
+            )
+        print("[INFO] Loading aggregated cached DINO/DA sequence datasets:")
+        for path, spec_min, spec_max, has_override in dataset_specs:
+            bounds = f"@{'' if spec_min is None else spec_min}:{'' if spec_max is None else spec_max}" if has_override else ""
+            print(f"[INFO]   {path}{bounds}")
+        return RLRoverLabDinoDAMultiFileRandomSequenceDataset(datasets, total_samples=total_samples)
+
     dataset_format = resolve_dataset_format(file_path, getattr(args, "dataset_format", "auto"))
     if dataset_format == "dino_da":
         from CloneRL.dataloader.hdf import RLRoverLabDinoDARandomSequenceDataset
@@ -226,6 +300,12 @@ def build_recurrent_hdf5_dataset(
             max_idx=max_idx,
             total_samples=total_samples,
             proprioceptive_keys=args.proprioceptive_keys,
+            return_next_obs=getattr(args, "return_next_obs", False),
+            expected_da_shape=(
+                int(model_config.get("depth_channels", 1)),
+                int(model_config.get("depth_height", 72)),
+                int(model_config.get("depth_width", 128)),
+            ),
         )
 
     if dataset_format == "compressed_rgbd":
@@ -257,7 +337,6 @@ def build_recurrent_hdf5_dataset(
         proprioceptive_keys=args.proprioceptive_keys,
         image_mode=args.image_mode,
     )
-
 
 def _configure_compressed_decode_workers(args: argparse.Namespace) -> None:
     if args.compressed_decode_backend == "cuda" and getattr(args, "num_workers", 0) != 0:

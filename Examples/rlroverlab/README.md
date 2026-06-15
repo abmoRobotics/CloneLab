@@ -71,3 +71,47 @@ docker exec rover-lab-base /isaac-sim/python.sh /workspace/rlroverlab/examples/0
 ```
 
 Override this with `--rlroverlab_eval_cmd` when needed.
+
+## State-To-Visual DAgger
+
+The DAgger workflow is implemented as a separate orchestration script, so the
+existing BC and IQL entry points above stay unchanged. It trains an initial
+DINO/DA recurrent BC student on the teacher dataset when no initial checkpoint
+is supplied, then repeats collection, aggregation, retraining, and evaluation.
+
+```bash
+python scripts/run_dagger_dino_da_iterations.py \
+  --run-context host \
+  --rounds 3 \
+  --base-dataset datasets/rover_dino_da3_512x288_400k.hdf5 \
+  --output-root runs/dagger_dino_da_h256
+```
+
+To start from an already-trained BC student instead of training round zero:
+
+```bash
+python scripts/run_dagger_dino_da_iterations.py \
+  --run-context host \
+  --rounds 3 \
+  --initial-checkpoint runs/dino-da-bc-rnn-h256/<run>/checkpoints/actor/best_model_epoch_4.pt
+```
+
+Inside the RLRoverLab container, run from the CloneLab checkout and switch the
+context to direct container execution:
+
+```bash
+cd /workspace/clonelab
+python scripts/run_dagger_dino_da_iterations.py \
+  --run-context container \
+  --rounds 3 \
+  --initial-checkpoint runs/dino-da-bc-rnn-h256/<run>/checkpoints/actor/best_model_epoch_4.pt
+```
+
+Each DAgger round writes a new HDF5 shard under `--output-root/round_N`, a
+dataset spec containing the base dataset plus all collected shards, and a
+summary JSON/text file with collection and evaluation metrics.
+
+The runner shows a top-level `tqdm` stage bar and streams collection/training
+progress live while still writing per-stage logs. Use `--no-live-output` to keep
+subprocess output in log files only, or `--no-progress` to hide the top-level
+stage bar.

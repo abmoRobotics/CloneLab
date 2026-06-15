@@ -12,10 +12,10 @@ dataset:
 
 trainer:
   batch_size: 32
-  epochs: 20
-  num_workers: 2
+  epochs: 5
+  num_workers: 8
   prefetch_factor: 2
-  save_freq: 2
+  save_freq: 1
   validation_freq: 1
   log_freq: 100
   device: cuda:0
@@ -23,13 +23,13 @@ trainer:
   image_mode: none
 
 wandb:
-  project:
-  mode:
+  project: dino-da-bc-rnn-h256
+  mode: offline
 
 eval:
   eval_after_train: false
-  eval_task: AAURoverEnvRGBDRaw-v0
-  eval_steps: 1000
+  eval_task: AAURoverEnvRGBDRawHD720-v0
+  eval_steps: 10000
   eval_num_envs:
   eval_checkpoint_name: best_model.pt
   eval_metrics_out:
@@ -59,7 +59,7 @@ models:
       proprioception_channels: 3
       proprioceptive_keys: [distance, heading, angle_diff]
       action_dim: 2
-      gru_hidden_size: 512
+      gru_hidden_size: 256
       gru_num_layers: 2
       num_queries: 8
       num_heads: 4

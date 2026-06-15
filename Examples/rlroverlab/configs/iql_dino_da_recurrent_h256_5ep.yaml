@@ -12,10 +12,10 @@ dataset:
 
 trainer:
   batch_size: 32
-  epochs: 20
-  num_workers: 2
+  epochs: 5
+  num_workers: 8
   prefetch_factor: 2
-  save_freq: 2
+  save_freq: 1
   validation_freq: 1
   log_freq: 100
   device: cuda:0
@@ -23,30 +23,33 @@ trainer:
   image_mode: none
 
 wandb:
-  project:
-  mode:
+  project: dino-da-iql-rnn-h256
+  mode: offline
 
 eval:
   eval_after_train: false
-  eval_task: AAURoverEnvRGBDRaw-v0
-  eval_steps: 1000
+  eval_task: AAURoverEnvRGBDRawHD720-v0
+  eval_steps: 10000
   eval_num_envs:
   eval_checkpoint_name: best_model.pt
   eval_metrics_out:
   eval_recurrent: true
 
 algorithm:
-  learning_rate: 0.0001
-  weight_decay: 0.0001
+  actions_lr: 0.0001
+  value_lr: 0.0001
+  critic_lr: 0.0001
+  discount: 0.99
+  tau: 0.005
+  expectile: 0.7
+  temperature: 1.0
+  target_update_freq: 1
   grad_clip: 1.0
-  lr_scheduler:
-  lr_decay_steps: 1000
-  lr_decay_rate: 0.99
 
 models:
   actor:
-    factory: CloneRL.models.torch:dino_da_bc_rnn_policy
-    config:
+    factory: CloneRL.models.torch:dino_da_iql_actor
+    config: &dino_da_config
       dino_token_count: 577
       dino_dim: 384
       dino_proj_dim: 192
@@ -59,7 +62,7 @@ models:
       proprioception_channels: 3
       proprioceptive_keys: [distance, heading, angle_diff]
       action_dim: 2
-      gru_hidden_size: 512
+      gru_hidden_size: 256
       gru_num_layers: 2
       num_queries: 8
       num_heads: 4
@@ -69,3 +72,14 @@ models:
       da3_model: depth-anything/DA3-SMALL
       da3_process_res: 504
       da3_process_res_method: upper_bound_resize
+      min_log_std: -5.0
+      max_log_std: 2.0
+      state_independent_log_std: true
+  critic:
+    factory: CloneRL.models.torch:dino_da_iql_twin_q
+    config:
+      <<: *dino_da_config
+  value:
+    factory: CloneRL.models.torch:dino_da_iql_value
+    config:
+      <<: *dino_da_config
